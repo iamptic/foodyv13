@@ -58,16 +58,72 @@
   function getDigits(v){ return (v||'').toString().replace(/\D+/g,''); }
 
   function setupPwToggle(btnId, inputId){
-    const btn = document.getElementById(btnId);
-    const inp = document.getElementById(inputId);
-    if (!btn || !inp || btn.dataset.bound === '1') return;
-    btn.dataset.bound = '1';
-    const update = (show) => {
-      inp.type = show ? 'text' : 'password';
-      btn.setAttribute('aria-pressed', show ? 'true' : 'false');
-      btn.setAttribute('aria-label', show ? 'Скрыть пароль' : 'Показать пароль');
-      btn.textContent = show ? '🙈' : '👁';
-    };
+  const btn = document.getElementById(btnId);
+  const inp = document.getElementById(inputId);
+  if (!btn || !inp || btn.dataset.bound === '1') return;
+  btn.dataset.bound = '1';
+  btn.classList.add('pwd-toggle');
+  const update = (show) => {
+    inp.type = show ? 'text' : 'password';
+    btn.setAttribute('aria-pressed', show ? 'true' : 'false');
+    btn.setAttribute('aria-label', show ? 'Скрыть пароль' : 'Показать пароль');
+    btn.innerHTML = eyeSvg(!show); // when showing -> eye-off
+  };
+  btn.addEventListener('click', () => {
+    const show = inp.type === 'password';
+    update(show);
+    try{ inp.focus({ preventScroll: true }); }catch(_){}
+  });
+  // init state (hidden by default)
+  update(false);
+}
+
+// --- helpers injected by patch ---
+function eyeSvg(closed){
+  // closed=true: eye (password hidden); closed=false: eye-off (password visible)
+  return closed ? (
+    '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'+
+    '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'+
+    '<circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'+
+    '</svg>'
+  ) : (
+    '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'+
+    '<path d="M3 3l18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'+
+    '<path d="M10.58 10.58A3 3 0 0012 15a3 3 0 002.42-4.42M9.88 4.26A10.94 10.94 0 0112 5c6.5 0 10 7 10 7a18.74 18.74 0 01-4.26 5.32M6.1 6.1A18.59 18.59 0 002 12s3.5 7 10 7a10.94 10.94 0 005.74-1.62" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'+
+    '</svg>'
+  );
+}
+
+function injectAuthUiStyles(){
+  if (document.querySelector('style[data-foody-auth-ui]')) return;
+  const css = `
+    .auth-title { text-align:center; margin: 8px 0 16px; }
+    .btn-full { width:100%; display:inline-flex; justify-content:center; }
+    .pwd-toggle { display:inline-flex; align-items:center; justify-content:center; width:32px; height:32px; background:transparent; border:0; cursor:pointer; }
+    .pwd-toggle svg { width:22px; height:22px; }
+  `;
+  const st = document.createElement('style');
+  st.setAttribute('data-foody-auth-ui','1');
+  st.textContent = css;
+  document.head.appendChild(st);
+}
+
+function centerAuthTitle(){
+  const hs = Array.from(document.querySelectorAll('h1,h2,h3'));
+  const t = hs.find(h => /войдите|зарегистрируйтесь/i.test((h.textContent||'').trim()));
+  if (t) t.classList.add('auth-title');
+}
+
+function makeRegisterFullWidth(){
+  const regForm = document.getElementById('registerForm');
+  if (!regForm) return;
+  const btn = regForm.querySelector('button[type="submit"], input[type="submit"]');
+  if (btn) btn.classList.add('btn-full');
+}
+// --- end helpers injected by patch ---
+
+
+;
     btn.addEventListener('click', () => {
       const show = inp.type === 'password';
       update(show);
@@ -535,6 +591,9 @@
 
   document.addEventListener('DOMContentLoaded', () => {
     try {
+      injectAuthUiStyles();
+      centerAuthTitle();
+      makeRegisterFullWidth();
       attachPhoneMask($('#loginPhone'));
       attachPhoneMask($('#registerPhone'));
       attachPhoneMask($('#profilePhone'));
