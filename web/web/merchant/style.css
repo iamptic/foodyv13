@@ -511,3 +511,11 @@ section#profile .card form .actions button[type="submit"] {
     width: auto;
   }
 }
+/* Auth title flex-safe fix */
+section#auth .card :is(.card-title,.title,h1,h2,h3){
+  width:100% !important;
+  display:flex !important;
+  justify-content:center !important;
+  text-align:center !important;
+  margin:8px 0 16px !important;
+}
