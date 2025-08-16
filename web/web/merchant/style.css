@@ -542,3 +542,57 @@ section#profile form[action*="password"] button[type="submit"] {
     width: 100% !important;
   }
 }
+/* Foody — Profile Buttons FlexLock (v13) — 2025-08-17 */
+/* Цель: в секции Профиль кнопки «Сохранить» и «Сменить пароль» стоят ровно справа и на одном уровне.
+   Ничего за пределами #profile не трогаем.
+*/
+
+/* 1) Формы профиля — колонками, чтобы можно было прижать футер вниз */
+section#profile form {
+  display: flex !important;
+  flex-direction: column !important;
+  min-height: 100% !important;
+}
+
+/* 2) Контейнер с кнопкой — как футер формы, прижат вниз и вправо */
+section#profile form .actions,
+section#profile form .form-actions,
+section#profile form .footer,
+section#profile form .submit-row {
+  margin-top: auto !important;            /* уводим в низ формы */
+  display: flex !important;
+  justify-content: flex-end !important;
+  gap: 12px !important;
+}
+
+/* 3) Если футер-обертки нет — кнопка сабмита сама прижимается вниз и вправо */
+section#profile form > button[type="submit"],
+section#profile form button[type="submit"].save,
+section#profile form button[type="submit"].btn-primary {
+  margin-top: auto !important;
+  align-self: flex-end !important;
+}
+
+/* 4) Единый размер и вид кнопок */
+section#profile form button[type="submit"],
+section#profile form .actions button,
+section#profile form .form-actions button,
+section#profile form .footer button,
+section#profile form .submit-row button {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-width: 180px !important;
+  height: 40px !important;
+}
+
+/* 5) Мобильная адаптация: тянем на всю ширину */
+@media (max-width: 520px) {
+  section#profile form button[type="submit"],
+  section#profile form .actions button,
+  section#profile form .form-actions button,
+  section#profile form .footer button,
+  section#profile form .submit-row button {
+    width: 100% !important;
+  }
+}
