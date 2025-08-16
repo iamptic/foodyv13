@@ -120,6 +120,48 @@ function makeRegisterFullWidth(){
   const btn = regForm.querySelector('button[type="submit"], input[type="submit"]');
   if (btn) btn.classList.add('btn-full');
 }
+// --- auth tabs initializer (robust, non-invasive) ---
+function initAuthTabs(){
+  const root = document.querySelector('.auth-forms') || document.getElementById('auth') || document.body;
+  // find login/register forms by common ids or by submit button text
+  let login = document.getElementById('loginForm') || root.querySelector('form#login') || root.querySelector('form[name="login"]');
+  let register = document.getElementById('registerForm') || root.querySelector('form#register') || root.querySelector('form[name="register"]');
+  if (!login || !register) {
+    // fallback by button text
+    const forms = Array.from(root.querySelectorAll('form'));
+    forms.forEach(f => {
+      const btn = f.querySelector('button[type="submit"], input[type="submit"]');
+      const t = ((btn?.textContent || btn?.value || '')+'').toLowerCase();
+      if (!login && /войти|login/.test(t)) login = f;
+      if (!register && /зарегистр|register/.test(t)) register = f;
+    });
+  }
+  if (!login && !register) return;
+
+  // choose initial mode: hash or default to login
+  let mode = (location.hash && /register/i.test(location.hash)) ? 'register' : 'login';
+  root.dataset.mode = mode;
+
+  const apply = () => {
+    if (login) login.style.display = (root.dataset.mode === 'login') ? '' : 'none';
+    if (register) register.style.display = (root.dataset.mode === 'register') ? '' : 'none';
+    // activate tabs if present
+    const tabLogin = document.querySelector('[data-auth-tab="login"], #tab-login');
+    const tabRegister = document.querySelector('[data-auth-tab="register"], #tab-register');
+    if (tabLogin) tabLogin.classList.toggle('active', root.dataset.mode === 'login');
+    if (tabRegister) tabRegister.classList.toggle('active', root.dataset.mode === 'register');
+  };
+
+  // wire tabs
+  const tabLogin = document.querySelector('[data-auth-tab="login"], #tab-login');
+  const tabRegister = document.querySelector('[data-auth-tab="register"], #tab-register');
+  if (tabLogin) tabLogin.addEventListener('click', (e)=>{ e.preventDefault(); root.dataset.mode = 'login'; history.replaceState(null,'','#login'); apply(); });
+  if (tabRegister) tabRegister.addEventListener('click', (e)=>{ e.preventDefault(); root.dataset.mode = 'register'; history.replaceState(null,'','#register'); apply(); });
+
+  // ensure visible if CSS hid both accidentally
+  apply();
+}
+
 // --- end helpers injected by patch ---
 
 
@@ -594,6 +636,7 @@ function makeRegisterFullWidth(){
       injectAuthUiStyles();
       centerAuthTitle();
       makeRegisterFullWidth();
+      initAuthTabs();
       attachPhoneMask($('#loginPhone'));
       attachPhoneMask($('#registerPhone'));
       attachPhoneMask($('#profilePhone'));
