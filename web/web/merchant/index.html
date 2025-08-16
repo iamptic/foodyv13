@@ -8,6 +8,10 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" />
   <link rel="stylesheet" href="./offer_create.ui.css">
   <link rel="stylesheet" href="./offer_create.ui.v2.css">
+  <!-- FilePond CSS -->
+<link href="https://unpkg.com/filepond@4.30.7/dist/filepond.min.css" rel="stylesheet">
+<link href="https://unpkg.com/filepond-plugin-image-preview@4.6.12/dist/filepond-plugin-image-preview.min.css" rel="stylesheet">
+<link href="./offer_photo_filepond.css" rel="stylesheet">
   <script defer src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ru.js"></script>
   <script>window.foodyApi = (window.__FOODY__ && window.__FOODY__.FOODY_API) || window.foodyApi || 'https://foodyback-production.up.railway.app';</script>
@@ -228,10 +232,13 @@
                 <option value="other">Другое</option>
               </select>
             </label>
-            <label class="full">Фото (опционально)
-              <input type="file" id="photo" accept="image/*">
-              <input type="hidden" name="image_url" id="image_url">
-            </label>
+            <div class="field">
+  <label for="offerImage">Фото (опционально)</label>
+  <input type="file" id="offerImage" name="offerImage" accept="image/*">
+  <!-- hidden, который будет заполняться после успешной загрузки -->
+  <input type="hidden" id="offerImageUrl" name="image_url">
+  <p class="hint">Поддерживаются JPG/PNG/WebP до 5 МБ</p>
+</div>
             <label class="full">
               <textarea name="description" rows="3" placeholder="Кратко: состав, порции и т.п."></textarea>
             </label>
@@ -357,5 +364,13 @@
   </div>
   <script src="./offer_create.logic.js" defer></script>
   <script src="./offer_create.logic.v2.js" defer></script>
+  <!-- FilePond JS -->
+<script src="https://unpkg.com/filepond@4.30.7/dist/filepond.min.js" defer></script>
+<script src="https://unpkg.com/filepond-plugin-image-preview@4.6.12/dist/filepond-plugin-image-preview.min.js" defer></script>
+<script src="https://unpkg.com/filepond-plugin-file-validate-type@1.2.8/dist/filepond-plugin-file-validate-type.min.js" defer></script>
+<script src="https://unpkg.com/filepond-plugin-file-validate-size@2.2.8/dist/filepond-plugin-file-validate-size.min.js" defer></script>
+
+<!-- Наш инициализатор -->
+<script src="./offer_photo_filepond.js" defer></script>
 </body>
 </html>
