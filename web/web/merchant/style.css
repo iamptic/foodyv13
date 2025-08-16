@@ -377,3 +377,25 @@ input[type="password"].is-invalid { background-color: #FEF2F2; }
 
 /* Disabled button state */
 button:disabled { opacity: .6; cursor: not-allowed; }
+/* Foody merchant auth/profile fixes — 2025-08-17 */
+.auth-forms:not([data-mode]) #loginForm { display:block; }
+.auth-forms:not([data-mode]) #registerForm { display:none; }
+
+.auth-forms[data-mode="login"] #loginForm { display:block; }
+.auth-forms[data-mode="login"] #registerForm { display:none; }
+.auth-forms[data-mode="register"] #loginForm { display:none; }
+.auth-forms[data-mode="register"] #registerForm { display:block; }
+
+.auth-title { text-align:center; margin:8px 0 16px; }
+.btn-full { width:100%; display:inline-flex; justify-content:center; }
+
+.pwd-toggle { width:32px; height:32px; display:inline-flex; align-items:center; justify-content:center; background:transparent; border:0; cursor:pointer; }
+.pwd-toggle svg { width:22px; height:22px; }
+
+/* Optional: align profile buttons (only if wrapped) */
+.profile-actions { display:flex; justify-content:flex-end; gap:12px; }
+.profile-actions .btn { min-width:160px; }
+@media (max-width: 520px) {
+  .profile-actions { flex-direction: column; }
+  .profile-actions .btn { width: 100%; }
+}
