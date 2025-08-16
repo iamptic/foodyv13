@@ -477,6 +477,24 @@ button[data-role="pw-toggle"].on::before {
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3 3l18 18' stroke='%23fff' stroke-width='2' stroke-linecap='round'/%3E%3Cpath d='M10.58 10.58A3 3 0 0012 15a3 3 0 002.42-4.42M9.88 4.26A10.94 10.94 0 0112 5c6.5 0 10 7 10 7a18.74 18.74 0 01-4.26 5.32M6.1 6.1A18.59 18.59 0 002 12s3.5 7 10 7a10.94 10.94 0 005.74-1.62' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   }
 }
+/* 1) Центрируем заголовок авторизации */
+section#auth .card .card-title {
+  text-align: center !important;
+  margin: 8px 0 16px !important;
+}
+
+/* 2) Растягиваем submit регистрации на всю ширину и обе колонки */
+#registerForm button[type="submit"],
+#registerForm input[type="submit"],
+#registerForm .btn[type="submit"] {
+  width: 100% !important;
+  display: inline-flex !important;
+  justify-content: center !important;
+  grid-column: 1 / -1 !important; /* форма: .form.grid.two */
+  margin-top: 8px;
+  align-self: end;
+}
+
 /* На случай общего .btn, который сужает кнопку */
 #registerForm .btn, form[id*="register"] .btn, form[name*="register"] .btn {
   width:100%!important; justify-content:center!important;
