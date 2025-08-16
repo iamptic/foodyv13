@@ -58,29 +58,28 @@
   function getDigits(v){ return (v||'').toString().replace(/\D+/g,''); }
 
   function setupPwToggle(btnId, inputId){
-  const btn = document.getElementById(btnId);
-  const inp = document.getElementById(inputId);
-  if (!btn || !inp || btn.dataset.bound === '1') return;
-  btn.dataset.bound = '1';
-  btn.classList.add('pwd-toggle');
-  const update = (show) => {
-    inp.type = show ? 'text' : 'password';
-    btn.setAttribute('aria-pressed', show ? 'true' : 'false');
-    btn.setAttribute('aria-label', show ? 'Скрыть пароль' : 'Показать пароль');
-    btn.innerHTML = eyeSvg(!show); // when showing -> eye-off
-  };
-  btn.addEventListener('click', () => {
-    const show = inp.type === 'password';
-    update(show);
-    try{ inp.focus({ preventScroll: true }); }catch(_){}
-  });
-  // init state (hidden by default)
-  update(false);
-}
+    const btn = document.getElementById(btnId);
+    const inp = document.getElementById(inputId);
+    if (!btn || !inp || btn.dataset.bound === '1') return;
+    btn.dataset.bound = '1';
+    btn.classList.add('pwd-toggle');
+    const update = (show) => {
+      inp.type = show ? 'text' : 'password';
+      btn.setAttribute('aria-pressed', show ? 'true' : 'false');
+      btn.setAttribute('aria-label', show ? 'Скрыть пароль' : 'Показать пароль');
+      btn.innerHTML = eyeSvg(!show);
+    };
+    btn.addEventListener('click', () => {
+      const show = inp.type === 'password';
+      update(show);
+      try { inp.focus({ preventScroll: true }); } catch(e){}
+    });
+    update(false);
+  }
 
-// --- helpers injected by patch ---
+
+// --- injected helpers ---
 function eyeSvg(closed){
-  // closed=true: eye (password hidden); closed=false: eye-off (password visible)
   return closed ? (
     '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'+
     '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'+
@@ -94,16 +93,22 @@ function eyeSvg(closed){
   );
 }
 
-function injectAuthUiStyles(){
-  if (document.querySelector('style[data-foody-auth-ui]')) return;
+function injectAuthCssFallback(){
+  if (document.querySelector('style[data-auth-fallback]')) return;
   const css = `
-    .auth-title { text-align:center; margin: 8px 0 16px; }
+    .auth-forms:not([data-mode]) #loginForm { display:block; }
+    .auth-forms:not([data-mode]) #registerForm { display:none; }
+    .auth-forms[data-mode="login"] #loginForm { display:block; }
+    .auth-forms[data-mode="login"] #registerForm { display:none; }
+    .auth-forms[data-mode="register"] #loginForm { display:none; }
+    .auth-forms[data-mode="register"] #registerForm { display:block; }
+    .auth-title { text-align:center; margin:8px 0 16px; }
     .btn-full { width:100%; display:inline-flex; justify-content:center; }
-    .pwd-toggle { display:inline-flex; align-items:center; justify-content:center; width:32px; height:32px; background:transparent; border:0; cursor:pointer; }
+    .pwd-toggle { width:32px; height:32px; display:inline-flex; align-items:center; justify-content:center; background:transparent; border:0; cursor:pointer; }
     .pwd-toggle svg { width:22px; height:22px; }
   `;
   const st = document.createElement('style');
-  st.setAttribute('data-foody-auth-ui','1');
+  st.setAttribute('data-auth-fallback','1');
   st.textContent = css;
   document.head.appendChild(st);
 }
@@ -116,62 +121,12 @@ function centerAuthTitle(){
 
 function makeRegisterFullWidth(){
   const regForm = document.getElementById('registerForm');
-  if (!regForm) return;
-  const btn = regForm.querySelector('button[type="submit"], input[type="submit"]');
+  const btn = regForm && regForm.querySelector('button[type="submit"], input[type="submit"]');
   if (btn) btn.classList.add('btn-full');
 }
-// --- auth tabs initializer (robust, non-invasive) ---
-function initAuthTabs(){
-  const root = document.querySelector('.auth-forms') || document.getElementById('auth') || document.body;
-  // find login/register forms by common ids or by submit button text
-  let login = document.getElementById('loginForm') || root.querySelector('form#login') || root.querySelector('form[name="login"]');
-  let register = document.getElementById('registerForm') || root.querySelector('form#register') || root.querySelector('form[name="register"]');
-  if (!login || !register) {
-    // fallback by button text
-    const forms = Array.from(root.querySelectorAll('form'));
-    forms.forEach(f => {
-      const btn = f.querySelector('button[type="submit"], input[type="submit"]');
-      const t = ((btn?.textContent || btn?.value || '')+'').toLowerCase();
-      if (!login && /войти|login/.test(t)) login = f;
-      if (!register && /зарегистр|register/.test(t)) register = f;
-    });
-  }
-  if (!login && !register) return;
-
-  // choose initial mode: hash or default to login
-  let mode = (location.hash && /register/i.test(location.hash)) ? 'register' : 'login';
-  root.dataset.mode = mode;
-
-  const apply = () => {
-    if (login) login.style.display = (root.dataset.mode === 'login') ? '' : 'none';
-    if (register) register.style.display = (root.dataset.mode === 'register') ? '' : 'none';
-    // activate tabs if present
-    const tabLogin = document.querySelector('[data-auth-tab="login"], #tab-login');
-    const tabRegister = document.querySelector('[data-auth-tab="register"], #tab-register');
-    if (tabLogin) tabLogin.classList.toggle('active', root.dataset.mode === 'login');
-    if (tabRegister) tabRegister.classList.toggle('active', root.dataset.mode === 'register');
-  };
-
-  // wire tabs
-  const tabLogin = document.querySelector('[data-auth-tab="login"], #tab-login');
-  const tabRegister = document.querySelector('[data-auth-tab="register"], #tab-register');
-  if (tabLogin) tabLogin.addEventListener('click', (e)=>{ e.preventDefault(); root.dataset.mode = 'login'; history.replaceState(null,'','#login'); apply(); });
-  if (tabRegister) tabRegister.addEventListener('click', (e)=>{ e.preventDefault(); root.dataset.mode = 'register'; history.replaceState(null,'','#register'); apply(); });
-
-  // ensure visible if CSS hid both accidentally
-  apply();
-}
-
-// --- end helpers injected by patch ---
+// --- end injected helpers ---
 
 
-;
-    btn.addEventListener('click', () => {
-      const show = inp.type === 'password';
-      update(show);
-      inp.focus({ preventScroll: true });
-    });
-  }
 
   function activateTab(tab) {
     try {
@@ -633,12 +588,14 @@ function initAuthTabs(){
 
   document.addEventListener('DOMContentLoaded', () => {
     try {
-      injectAuthUiStyles();
+      injectAuthCssFallback();
+      // init login/register visibility before other UI
+      const modeLogin = document.getElementById('mode-login');
+      const modeReg = document.getElementById('mode-register');
+      if (modeLogin && modeReg && location.hash && /register/i.test(location.hash)) { modeReg.checked = true; modeLogin.checked = false; }
+      if (typeof bindAuthToggle === 'function') bindAuthToggle();
       centerAuthTitle();
       makeRegisterFullWidth();
-      initAuthTabs();
-      initAuthTabsRobust();
-      alignProfileButtonsSimple();
       attachPhoneMask($('#loginPhone'));
       attachPhoneMask($('#registerPhone'));
       attachPhoneMask($('#profilePhone'));
@@ -653,77 +610,3 @@ function initAuthTabs(){
       const ok = gate(); if (!ok) activateTab('auth');
     } catch(e){ console.error(e); const a = document.getElementById('auth'); if (a) { a.classList.add('active'); } }
   });
-})();
-
-
-
-// === v2 additions: robust auth visibility + simple profile button alignment ===
-function hardShow(el){ if (!el) return; el.removeAttribute('hidden'); el.style.display = ''; el.style.visibility = 'visible'; el.style.opacity = ''; }
-function hardHide(el){ if (!el) return; el.setAttribute('hidden',''); el.style.display = 'none'; }
-
-function initAuthTabsRobust(){
-  const root = document.querySelector('.auth-forms') || document.getElementById('auth') || document.body;
-  let loginSel = ['#loginForm','form#login','form[name="login"]'];
-  let regSel = ['#registerForm','form#register','form[name="register"]'];
-  let login = null, register = null;
-
-  function findForms(){
-    login = loginSel.map(s=>document.querySelector(s)).find(Boolean) || login;
-    register = regSel.map(s=>document.querySelector(s)).find(Boolean) || register;
-    if (!login || !register){
-      // heuristic by submit text
-      const forms = Array.from(root.querySelectorAll('form'));
-      forms.forEach(f => {
-        const btn = f.querySelector('button[type="submit"], input[type="submit"]');
-        const t = ((btn?.textContent || btn?.value || '')+'').toLowerCase();
-        if (!login && /войти|login/.test(t)) login = f;
-        if (!register && /зарегистр|register/.test(t)) register = f;
-      });
-    }
-    return login && register;
-  }
-
-  function apply(mode){
-    root.dataset.mode = mode;
-    if (mode === 'login') { hardShow(login); hardHide(register); }
-    else { hardShow(register); hardHide(login); }
-    const tabLogin = document.querySelector('[data-auth-tab="login"], #tab-login');
-    const tabRegister = document.querySelector('[data-auth-tab="register"], #tab-register');
-    if (tabLogin) tabLogin.classList.toggle('active', mode === 'login');
-    if (tabRegister) tabRegister.classList.toggle('active', mode === 'register');
-  }
-
-  function boot(){
-    if (!findForms()) return false;
-    let mode = (location.hash && /register/i.test(location.hash)) ? 'register' : 'login';
-    apply(mode);
-    const tabLogin = document.querySelector('[data-auth-tab="login"], #tab-login');
-    const tabRegister = document.querySelector('[data-auth-tab="register"], #tab-register');
-    if (tabLogin) tabLogin.addEventListener('click', (e)=>{ e.preventDefault(); history.replaceState(null,'','#login'); apply('login'); });
-    if (tabRegister) tabRegister.addEventListener('click', (e)=>{ e.preventDefault(); history.replaceState(null,'','#register'); apply('register'); });
-    return true;
-  }
-
-  if (!boot()){
-    // Observe until forms appear (if DOM builds late)
-    const obs = new MutationObserver((muts)=>{
-      if (boot()){ obs.disconnect(); }
-    });
-    obs.observe(document.documentElement, { childList:true, subtree:true });
-    // Safety timeout
-    setTimeout(()=>{ boot(); }, 1200);
-  }
-}
-
-function alignProfileButtonsSimple(){
-  const btns = Array.from(document.querySelectorAll('button, input[type="button"], input[type="submit"]'));
-  btns.forEach(b => {
-    const txt = ((b.textContent || b.value || '')+'').trim().toLowerCase();
-    if (/^сохранить$/.test(txt) || /^сменить пароль$/.test(txt)) {
-      b.style.display = 'block';
-      b.style.marginLeft = 'auto';
-      b.style.minWidth = '160px';
-    }
-  });
-}
-
