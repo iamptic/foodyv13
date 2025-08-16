@@ -1,0 +1,18 @@
+
+/* Foody — Offer Photo (FilePond) minimal polish — 2025-08-17 */
+.filepond--root {
+  border-radius: 12px;
+  background: rgba(255,255,255,0.02);
+  border: 1px dashed rgba(255,255,255,0.18);
+}
+.filepond--panel-root { border-radius: 12px; }
+.filepond--item-panel { background: rgba(255,255,255,0.06); }
+.filepond--drop-label { color: #ccc; }
+
+@media (prefers-color-scheme: light) {
+  .filepond--root {
+    background: rgba(0,0,0,0.02);
+    border-color: rgba(0,0,0,0.15);
+  }
+  .filepond--drop-label { color: #555; }
+}
