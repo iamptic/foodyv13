@@ -377,22 +377,6 @@ input[type="password"].is-invalid { background-color: #FEF2F2; }
 
 /* Disabled button state */
 button:disabled { opacity: .6; cursor: not-allowed; }
-/* Foody auth minimal CSS tweak — 2025-08-17 */
-
-/* 1) Центр заголовка внутри блока авторизации */
-.auth-forms h1, .auth-forms h2, .auth-forms h3,
-#auth h1, #auth h2, #auth h3 {
-  text-align: center;
-  margin: 8px 0 16px;
-}
-
-/* 2) Кнопка «Зарегистрироваться» на всю ширину */
-#registerForm button[type="submit"],
-#registerForm input[type="submit"] {
-  width: 100%;
-  display: inline-flex;
-  justify-content: center;
-}
 /* Foody — Password Eye (CSS-only, 2025-08-17)
    Заменяет смайлики у кнопок показа/скрытия пароля на аккуратный «глаз». Без JS.
    Поддерживает переключение вида, если ваш код ставит aria-pressed / data-show / data-visible / .on
@@ -492,22 +476,6 @@ button[data-role="pw-toggle"].on::before {
   button[data-role="pw-toggle"].on::before {
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3 3l18 18' stroke='%23fff' stroke-width='2' stroke-linecap='round'/%3E%3Cpath d='M10.58 10.58A3 3 0 0012 15a3 3 0 002.42-4.42M9.88 4.26A10.94 10.94 0 0112 5c6.5 0 10 7 10 7a18.74 18.74 0 01-4.26 5.32M6.1 6.1A18.59 18.59 0 002 12s3.5 7 10 7a10.94 10.94 0 005.74-1.62' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   }
-}
-/* Центр заголовка в зоне авторизации */
-.auth-forms h1,.auth-forms h2,.auth-forms h3,
-#auth h1,#auth h2,#auth h3,
-#loginForm h1,#loginForm h2,#loginForm h3,
-#registerForm h1,#registerForm h2,#registerForm h3,
-section#auth h1,section#auth h2,section#auth h3 { text-align:center!important; margin:8px 0 16px!important; }
-
-/* Фолбэк через :has — если заголовок стоит прямо перед табами */
-h1:has(+ .auth-tabs), h2:has(+ .auth-tabs), h3:has(+ .auth-tabs) { text-align:center!important; margin:8px 0 16px!important; }
-
-/* «Зарегистрироваться» на всю ширину (много вариантов селекторов) */
-#registerForm button[type=submit], #registerForm input[type=submit],
-form[id*="register"] button[type=submit], form[name*="register"] button[type=submit],
-form[action*="register"] button[type=submit], button#registerBtn, button#register, .btn-register {
-  width:100%!important; display:inline-flex!important; justify-content:center!important;
 }
 /* На случай общего .btn, который сужает кнопку */
 #registerForm .btn, form[id*="register"] .btn, form[name*="register"] .btn {
