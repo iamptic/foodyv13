@@ -378,3 +378,136 @@ input[type="password"].is-invalid { background-color: #FEF2F2; }
 /* Disabled button state */
 button:disabled { opacity: .6; cursor: not-allowed; }
 https://foodyweb-production.up.railway.app/web/merchant/
+
+/* Foody UI Final Patch — 2025-08-17 */
+
+/* ========== 1) AUTH: заголовок по центру (точно под v13) ========== */
+section#auth .card .card-title {
+  text-align: center !important;
+  margin: 8px 0 16px !important;
+}
+
+/* ========== 2) AUTH: «Зарегистрироваться» на всю ширину (грид из 2 колонок) ========== */
+#registerForm button[type="submit"],
+#registerForm input[type="submit"],
+#registerForm .btn[type="submit"] {
+  width: 100% !important;
+  display: inline-flex !important;
+  justify-content: center !important;
+  grid-column: 1 / -1 !important;
+  margin-top: 8px;
+  align-self: end;
+}
+
+/* ========== 3) PASSWORD EYE (CSS-only) — заменяем смайлики на иконку ========== */
+button#toggleLoginPw, button#toggleRegisterPw, button#pwOldToggle, button#pwNewToggle,
+button.pw-toggle, button[data-role="pw-toggle"] {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  margin-left: 6px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  color: transparent; /* скрываем смайлик/текст */
+  font-size: 0;
+  line-height: 0;
+}
+button#toggleLoginPw::before, button#toggleRegisterPw::before, button#pwOldToggle::before, button#pwNewToggle::before,
+button.pw-toggle::before, button[data-role="pw-toggle"]::before {
+  content: "";
+  width: 22px;
+  height: 22px;
+  display: block;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 22px 22px;
+  /* по умолчанию — закрытый глаз */
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='12' cy='12' r='3' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+/* «Показан пароль» — перечёркнутый глаз (если JS выставляет состояние) */
+button#toggleLoginPw[aria-pressed="true"]::before,
+button#toggleRegisterPw[aria-pressed="true"]::before,
+button#pwOldToggle[aria-pressed="true"]::before,
+button#pwNewToggle[aria-pressed="true"]::before,
+button.pw-toggle[aria-pressed="true"]::before,
+button[data-role="pw-toggle"][aria-pressed="true"]::before,
+button#toggleLoginPw[data-show="true"]::before,
+button#toggleRegisterPw[data-show="true"]::before,
+button#pwOldToggle[data-show="true"]::before,
+button#pwNewToggle[data-show="true"]::before,
+button.pw-toggle[data-show="true"]::before,
+button[data-role="pw-toggle"][data-show="true"]::before,
+button#toggleLoginPw.data-visible::before,
+button#toggleRegisterPw.data-visible::before,
+button#pwOldToggle.data-visible::before,
+button#pwNewToggle.data-visible::before,
+button.pw-toggle.data-visible::before,
+button[data-role="pw-toggle"].data-visible::before,
+button#toggleLoginPw.on::before,
+button#toggleRegisterPw.on::before,
+button#pwOldToggle.on::before,
+button#pwNewToggle.on::before,
+button.pw-toggle.on::before,
+button[data-role="pw-toggle"].on::before {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3 3l18 18' stroke='%23000' stroke-width='2' stroke-linecap='round'/%3E%3Cpath d='M10.58 10.58A3 3 0 0012 15a3 3 0 002.42-4.42M9.88 4.26A10.94 10.94 0 0112 5c6.5 0 10 7 10 7a18.74 18.74 0 01-4.26 5.32M6.1 6.1A18.59 18.59 0 002 12s3.5 7 10 7a10.94 10.94 0 005.74-1.62' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+@media (prefers-color-scheme: dark) {
+  button#toggleLoginPw::before, button#toggleRegisterPw::before, button#pwOldToggle::before, button#pwNewToggle::before,
+  button.pw-toggle::before, button[data-role="pw-toggle"]::before {
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='12' cy='12' r='3' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  }
+  button#toggleLoginPw[aria-pressed="true"]::before,
+  button#toggleRegisterPw[aria-pressed="true"]::before,
+  button#pwOldToggle[aria-pressed="true"]::before,
+  button#pwNewToggle[aria-pressed="true"]::before,
+  button.pw-toggle[aria-pressed="true"]::before,
+  button[data-role="pw-toggle"][aria-pressed="true"]::before,
+  button#toggleLoginPw[data-show="true"]::before,
+  button#toggleRegisterPw[data-show="true"]::before,
+  button#pwOldToggle[data-show="true"]::before,
+  button#pwNewToggle[data-show="true"]::before,
+  button.pw-toggle[data-show="true"]::before,
+  button[data-role="pw-toggle"][data-show="true"]::before,
+  button#toggleLoginPw.data-visible::before,
+  button#toggleRegisterPw.data-visible::before,
+  button#pwOldToggle.data-visible::before,
+  button#pwNewToggle.data-visible::before,
+  button.pw-toggle.data-visible::before,
+  button[data-role="pw-toggle"].data-visible::before,
+  button#toggleLoginPw.on::before,
+  button#toggleRegisterPw.on::before,
+  button#pwOldToggle.on::before,
+  button#pwNewToggle.on::before,
+  button.pw-toggle.on::before,
+  button[data-role="pw-toggle"].on::before {
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3 3l18 18' stroke='%23fff' stroke-width='2' stroke-linecap='round'/%3E%3Cpath d='M10.58 10.58A3 3 0 0012 15a3 3 0 002.42-4.42M9.88 4.26A10.94 10.94 0 0112 5c6.5 0 10 7 10 7a18.74 18.74 0 01-4.26 5.32M6.1 6.1A18.59 18.59 0 002 12s3.5 7 10 7a10.94 10.94 0 005.74-1.62' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  }
+}
+
+/* ========== 4) PROFILE: кнопки внизу справа у карточек (absolute pin) ========== */
+section#profile .card { position: relative; }
+section#profile .card form { padding-bottom: 72px; } /* чтобы кнопку не перекрывали поля */
+section#profile .card form button[type="submit"],
+section#profile .card form .actions button[type="submit"] {
+  position: absolute !important;
+  right: 20px;
+  bottom: 20px;
+  min-width: 180px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+@media (max-width: 520px) {
+  section#profile .card form button[type="submit"],
+  section#profile .card form .actions button[type="submit"] {
+    left: 20px;
+    right: 20px;
+    width: auto;
+  }
+}
