@@ -377,10 +377,19 @@ input[type="password"].is-invalid { background-color: #FEF2F2; }
 
 /* Disabled button state */
 button:disabled { opacity: .6; cursor: not-allowed; }
-/* Центр заголовка в блоке авторизации */
-.auth-forms h1, .auth-forms h2, .auth-forms h3,
-#auth h1, #auth h2, #auth h3 { text-align:center; margin:8px 0 16px; }
+/* Foody auth minimal CSS tweak — 2025-08-17 */
 
-/* Кнопка «Зарегистрироваться» на всю ширину */
+/* 1) Центр заголовка внутри блока авторизации */
+.auth-forms h1, .auth-forms h2, .auth-forms h3,
+#auth h1, #auth h2, #auth h3 {
+  text-align: center;
+  margin: 8px 0 16px;
+}
+
+/* 2) Кнопка «Зарегистрироваться» на всю ширину */
 #registerForm button[type="submit"],
-#registerForm input[type="submit"] { width:100%; display:inline-flex; justify-content:center; }
+#registerForm input[type="submit"] {
+  width: 100%;
+  display: inline-flex;
+  justify-content: center;
+}
