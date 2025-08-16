@@ -1,0 +1,5 @@
+
+/* Foody — Stability Hotfix: pane visibility (2025-08-17) */
+/* Жёстко гарантируем, что видна только активная панель. */
+.pane { display: none !important; }
+.pane.active { display: block !important; }
