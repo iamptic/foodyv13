@@ -62,71 +62,18 @@
     const inp = document.getElementById(inputId);
     if (!btn || !inp || btn.dataset.bound === '1') return;
     btn.dataset.bound = '1';
-    btn.classList.add('pwd-toggle');
     const update = (show) => {
       inp.type = show ? 'text' : 'password';
       btn.setAttribute('aria-pressed', show ? 'true' : 'false');
       btn.setAttribute('aria-label', show ? 'Скрыть пароль' : 'Показать пароль');
-      btn.innerHTML = eyeSvg(!show);
+      btn.textContent = show ? '🙈' : '👁';
     };
     btn.addEventListener('click', () => {
       const show = inp.type === 'password';
       update(show);
-      try { inp.focus({ preventScroll: true }); } catch(e){}
+      inp.focus({ preventScroll: true });
     });
-    update(false);
   }
-
-
-// --- injected helpers ---
-function eyeSvg(closed){
-  return closed ? (
-    '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'+
-    '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'+
-    '<circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'+
-    '</svg>'
-  ) : (
-    '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'+
-    '<path d="M3 3l18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'+
-    '<path d="M10.58 10.58A3 3 0 0012 15a3 3 0 002.42-4.42M9.88 4.26A10.94 10.94 0 0112 5c6.5 0 10 7 10 7a18.74 18.74 0 01-4.26 5.32M6.1 6.1A18.59 18.59 0 002 12s3.5 7 10 7a10.94 10.94 0 005.74-1.62" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'+
-    '</svg>'
-  );
-}
-
-function injectAuthCssFallback(){
-  if (document.querySelector('style[data-auth-fallback]')) return;
-  const css = `
-    .auth-forms:not([data-mode]) #loginForm { display:block; }
-    .auth-forms:not([data-mode]) #registerForm { display:none; }
-    .auth-forms[data-mode="login"] #loginForm { display:block; }
-    .auth-forms[data-mode="login"] #registerForm { display:none; }
-    .auth-forms[data-mode="register"] #loginForm { display:none; }
-    .auth-forms[data-mode="register"] #registerForm { display:block; }
-    .auth-title { text-align:center; margin:8px 0 16px; }
-    .btn-full { width:100%; display:inline-flex; justify-content:center; }
-    .pwd-toggle { width:32px; height:32px; display:inline-flex; align-items:center; justify-content:center; background:transparent; border:0; cursor:pointer; }
-    .pwd-toggle svg { width:22px; height:22px; }
-  `;
-  const st = document.createElement('style');
-  st.setAttribute('data-auth-fallback','1');
-  st.textContent = css;
-  document.head.appendChild(st);
-}
-
-function centerAuthTitle(){
-  const hs = Array.from(document.querySelectorAll('h1,h2,h3'));
-  const t = hs.find(h => /войдите|зарегистрируйтесь/i.test((h.textContent||'').trim()));
-  if (t) t.classList.add('auth-title');
-}
-
-function makeRegisterFullWidth(){
-  const regForm = document.getElementById('registerForm');
-  const btn = regForm && regForm.querySelector('button[type="submit"], input[type="submit"]');
-  if (btn) btn.classList.add('btn-full');
-}
-// --- end injected helpers ---
-
-
 
   function activateTab(tab) {
     try {
@@ -588,14 +535,6 @@ function makeRegisterFullWidth(){
 
   document.addEventListener('DOMContentLoaded', () => {
     try {
-      injectAuthCssFallback();
-      // init login/register visibility before other UI
-      const modeLogin = document.getElementById('mode-login');
-      const modeReg = document.getElementById('mode-register');
-      if (modeLogin && modeReg && location.hash && /register/i.test(location.hash)) { modeReg.checked = true; modeLogin.checked = false; }
-      if (typeof bindAuthToggle === 'function') bindAuthToggle();
-      centerAuthTitle();
-      makeRegisterFullWidth();
       attachPhoneMask($('#loginPhone'));
       attachPhoneMask($('#registerPhone'));
       attachPhoneMask($('#profilePhone'));
@@ -610,3 +549,4 @@ function makeRegisterFullWidth(){
       const ok = gate(); if (!ok) activateTab('auth');
     } catch(e){ console.error(e); const a = document.getElementById('auth'); if (a) { a.classList.add('active'); } }
   });
+})();
