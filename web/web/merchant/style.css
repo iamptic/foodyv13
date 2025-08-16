@@ -499,3 +499,46 @@ section#auth .card .card-title {
 #registerForm .btn, form[id*="register"] .btn, form[name*="register"] .btn {
   width:100%!important; justify-content:center!important;
 }
+/* Foody — Profile Buttons Align (v13 safe) — 2025-08-17 */
+
+/* 1) Сохранить (форма профиля): прижать вправо, одинаковая ширина, ровная высота */
+section#profile form[id*="profile"] button[type="submit"],
+section#profile form[name*="profile"] button[type="submit"],
+section#profile form[action*="profile"] button[type="submit"] {
+  display: inline-flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  margin-left: auto !important;        /* прижимаем вправо в своей карточке */
+  min-width: 180px !important;
+  height: 40px !important;
+}
+
+/* 2) Сменить пароль (форма пароля): те же параметры выравнивания */
+section#profile form[id*="pass"] button[type="submit"],
+section#profile form[name*="pass"] button[type="submit"],
+section#profile form[action*="pass"] button[type="submit"],
+section#profile form[id*="password"] button[type="submit"],
+section#profile form[name*="password"] button[type="submit"],
+section#profile form[action*="password"] button[type="submit"] {
+  display: inline-flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  margin-left: auto !important;        /* прижимаем вправо */
+  min-width: 180px !important;
+  height: 40px !important;
+}
+
+/* 3) На мобильных — кнопки можно тянуть на всю ширину для равномерности */
+@media (max-width: 520px) {
+  section#profile form[id*="profile"] button[type="submit"],
+  section#profile form[name*="profile"] button[type="submit"],
+  section#profile form[action*="profile"] button[type="submit"],
+  section#profile form[id*="pass"] button[type="submit"],
+  section#profile form[name*="pass"] button[type="submit"],
+  section#profile form[action*="pass"] button[type="submit"],
+  section#profile form[id*="password"] button[type="submit"],
+  section#profile form[name*="password"] button[type="submit"],
+  section#profile form[action*="password"] button[type="submit"] {
+    width: 100% !important;
+  }
+}
