@@ -596,3 +596,40 @@ section#profile form .submit-row button {
     width: 100% !important;
   }
 }
+/* Foody — Profile Buttons Pin (absolute, scoped) — 2025-08-17 */
+/* Цель: в секции Профиль обе кнопки (Сохранить/Сменить пароль) всегда на одном месте —
+   внизу справа карточек. Ничего вне #profile не меняем. */
+
+/* 1) Карточки профиля делаем контекстом позиционирования */
+section#profile .card {
+  position: relative;
+}
+
+/* 2) Добавляем безопасную нижнюю «прокладку» у формы,
+      чтобы кнопка не перекрывала поля (если их много) */
+section#profile .card form {
+  padding-bottom: 72px; /* под высоту кнопки + отступ */
+}
+
+/* 3) Сам submit фиксируем в правом нижнем углу карточки */
+section#profile .card form button[type="submit"],
+section#profile .card form .actions button[type="submit"] {
+  position: absolute !important;
+  right: 20px;
+  bottom: 20px;
+  min-width: 180px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 4) На мобильном — растягиваем кнопку на всю ширину, оставляя пин снизу */
+@media (max-width: 520px) {
+  section#profile .card form button[type="submit"],
+  section#profile .card form .actions button[type="submit"] {
+    left: 20px;
+    right: 20px;
+    width: auto;
+  }
+}
