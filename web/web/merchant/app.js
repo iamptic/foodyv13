@@ -637,6 +637,8 @@ function initAuthTabs(){
       centerAuthTitle();
       makeRegisterFullWidth();
       initAuthTabs();
+      initAuthTabsRobust();
+      alignProfileButtonsSimple();
       attachPhoneMask($('#loginPhone'));
       attachPhoneMask($('#registerPhone'));
       attachPhoneMask($('#profilePhone'));
@@ -652,3 +654,76 @@ function initAuthTabs(){
     } catch(e){ console.error(e); const a = document.getElementById('auth'); if (a) { a.classList.add('active'); } }
   });
 })();
+
+
+
+// === v2 additions: robust auth visibility + simple profile button alignment ===
+function hardShow(el){ if (!el) return; el.removeAttribute('hidden'); el.style.display = ''; el.style.visibility = 'visible'; el.style.opacity = ''; }
+function hardHide(el){ if (!el) return; el.setAttribute('hidden',''); el.style.display = 'none'; }
+
+function initAuthTabsRobust(){
+  const root = document.querySelector('.auth-forms') || document.getElementById('auth') || document.body;
+  let loginSel = ['#loginForm','form#login','form[name="login"]'];
+  let regSel = ['#registerForm','form#register','form[name="register"]'];
+  let login = null, register = null;
+
+  function findForms(){
+    login = loginSel.map(s=>document.querySelector(s)).find(Boolean) || login;
+    register = regSel.map(s=>document.querySelector(s)).find(Boolean) || register;
+    if (!login || !register){
+      // heuristic by submit text
+      const forms = Array.from(root.querySelectorAll('form'));
+      forms.forEach(f => {
+        const btn = f.querySelector('button[type="submit"], input[type="submit"]');
+        const t = ((btn?.textContent || btn?.value || '')+'').toLowerCase();
+        if (!login && /войти|login/.test(t)) login = f;
+        if (!register && /зарегистр|register/.test(t)) register = f;
+      });
+    }
+    return login && register;
+  }
+
+  function apply(mode){
+    root.dataset.mode = mode;
+    if (mode === 'login') { hardShow(login); hardHide(register); }
+    else { hardShow(register); hardHide(login); }
+    const tabLogin = document.querySelector('[data-auth-tab="login"], #tab-login');
+    const tabRegister = document.querySelector('[data-auth-tab="register"], #tab-register');
+    if (tabLogin) tabLogin.classList.toggle('active', mode === 'login');
+    if (tabRegister) tabRegister.classList.toggle('active', mode === 'register');
+  }
+
+  function boot(){
+    if (!findForms()) return false;
+    let mode = (location.hash && /register/i.test(location.hash)) ? 'register' : 'login';
+    apply(mode);
+    const tabLogin = document.querySelector('[data-auth-tab="login"], #tab-login');
+    const tabRegister = document.querySelector('[data-auth-tab="register"], #tab-register');
+    if (tabLogin) tabLogin.addEventListener('click', (e)=>{ e.preventDefault(); history.replaceState(null,'','#login'); apply('login'); });
+    if (tabRegister) tabRegister.addEventListener('click', (e)=>{ e.preventDefault(); history.replaceState(null,'','#register'); apply('register'); });
+    return true;
+  }
+
+  if (!boot()){
+    // Observe until forms appear (if DOM builds late)
+    const obs = new MutationObserver((muts)=>{
+      if (boot()){ obs.disconnect(); }
+    });
+    obs.observe(document.documentElement, { childList:true, subtree:true });
+    // Safety timeout
+    setTimeout(()=>{ boot(); }, 1200);
+  }
+}
+
+function alignProfileButtonsSimple(){
+  const btns = Array.from(document.querySelectorAll('button, input[type="button"], input[type="submit"]'));
+  btns.forEach(b => {
+    const txt = ((b.textContent || b.value || '')+'').trim().toLowerCase();
+    if (/^сохранить$/.test(txt) || /^сменить пароль$/.test(txt)) {
+      b.style.display = 'block';
+      b.style.marginLeft = 'auto';
+      b.style.minWidth = '160px';
+    }
+  });
+}
+
