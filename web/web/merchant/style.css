@@ -393,3 +393,103 @@ button:disabled { opacity: .6; cursor: not-allowed; }
   display: inline-flex;
   justify-content: center;
 }
+/* Foody — Password Eye (CSS-only, 2025-08-17)
+   Заменяет смайлики у кнопок показа/скрытия пароля на аккуратный «глаз». Без JS.
+   Поддерживает переключение вида, если ваш код ставит aria-pressed / data-show / data-visible / .on
+*/
+
+/* 1) Общий список селекторов для кнопок-тогглеров пароля */
+button#toggleLoginPw, button#toggleRegisterPw, button#pwOldToggle, button#pwNewToggle,
+button.pw-toggle, button[data-role="pw-toggle"] {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  margin-left: 6px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  /* скрываем смайлик/текст, но сохраняем кнопку доступной */
+  color: transparent;
+  font-size: 0;
+  line-height: 0;
+}
+
+/* 2) Рисуем иконку через ::before */
+button#toggleLoginPw::before, button#toggleRegisterPw::before, button#pwOldToggle::before, button#pwNewToggle::before,
+button.pw-toggle::before, button[data-role="pw-toggle"]::before {
+  content: "";
+  width: 22px;
+  height: 22px;
+  display: block;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 22px 22px;
+  /* по умолчанию — закрытый глаз (пароль скрыт) */
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='12' cy='12' r='3' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+/* 3) Если ваш JS отмечает «показан пароль», меняем на перечёркнутый глаз */
+button#toggleLoginPw[aria-pressed="true"]::before,
+button#toggleRegisterPw[aria-pressed="true"]::before,
+button#pwOldToggle[aria-pressed="true"]::before,
+button#pwNewToggle[aria-pressed="true"]::before,
+button.pw-toggle[aria-pressed="true"]::before,
+button[data-role="pw-toggle"][aria-pressed="true"]::before,
+button#toggleLoginPw[data-show="true"]::before,
+button#toggleRegisterPw[data-show="true"]::before,
+button#pwOldToggle[data-show="true"]::before,
+button#pwNewToggle[data-show="true"]::before,
+button.pw-toggle[data-show="true"]::before,
+button[data-role="pw-toggle"][data-show="true"]::before,
+button#toggleLoginPw[data-visible="true"]::before,
+button#toggleRegisterPw[data-visible="true"]::before,
+button#pwOldToggle[data-visible="true"]::before,
+button#pwNewToggle[data-visible="true"]::before,
+button.pw-toggle[data-visible="true"]::before,
+button[data-role="pw-toggle"][data-visible="true"]::before,
+button#toggleLoginPw.on::before,
+button#toggleRegisterPw.on::before,
+button#pwOldToggle.on::before,
+button#pwNewToggle.on::before,
+button.pw-toggle.on::before,
+button[data-role="pw-toggle"].on::before {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3 3l18 18' stroke='%23000' stroke-width='2' stroke-linecap='round'/%3E%3Cpath d='M10.58 10.58A3 3 0 0012 15a3 3 0 002.42-4.42M9.88 4.26A10.94 10.94 0 0112 5c6.5 0 10 7 10 7a18.74 18.74 0 01-4.26 5.32M6.1 6.1A18.59 18.59 0 002 12s3.5 7 10 7a10.94 10.94 0 005.74-1.62' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+/* 4) Поддержка тёмной темы (если у страницы есть dark body) */
+@media (prefers-color-scheme: dark) {
+  button#toggleLoginPw::before, button#toggleRegisterPw::before, button#pwOldToggle::before, button#pwNewToggle::before,
+  button.pw-toggle::before, button[data-role="pw-toggle"]::before {
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='12' cy='12' r='3' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  }
+  button#toggleLoginPw[aria-pressed="true"]::before,
+  button#toggleRegisterPw[aria-pressed="true"]::before,
+  button#pwOldToggle[aria-pressed="true"]::before,
+  button#pwNewToggle[aria-pressed="true"]::before,
+  button.pw-toggle[aria-pressed="true"]::before,
+  button[data-role="pw-toggle"][aria-pressed="true"]::before,
+  button#toggleLoginPw[data-show="true"]::before,
+  button#toggleRegisterPw[data-show="true"]::before,
+  button#pwOldToggle[data-show="true"]::before,
+  button#pwNewToggle[data-show="true"]::before,
+  button.pw-toggle[data-show="true"]::before,
+  button[data-role="pw-toggle"][data-show="true"]::before,
+  button#toggleLoginPw[data-visible="true"]::before,
+  button#toggleRegisterPw[data-visible="true"]::before,
+  button#pwOldToggle[data-visible="true"]::before,
+  button#pwNewToggle[data-visible="true"]::before,
+  button.pw-toggle[data-visible="true"]::before,
+  button[data-role="pw-toggle"][data-visible="true"]::before,
+  button#toggleLoginPw.on::before,
+  button#toggleRegisterPw.on::before,
+  button#pwOldToggle.on::before,
+  button#pwNewToggle.on::before,
+  button.pw-toggle.on::before,
+  button[data-role="pw-toggle"].on::before {
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3 3l18 18' stroke='%23fff' stroke-width='2' stroke-linecap='round'/%3E%3Cpath d='M10.58 10.58A3 3 0 0012 15a3 3 0 002.42-4.42M9.88 4.26A10.94 10.94 0 0112 5c6.5 0 10 7 10 7a18.74 18.74 0 01-4.26 5.32M6.1 6.1A18.59 18.59 0 002 12s3.5 7 10 7a10.94 10.94 0 005.74-1.62' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  }
+}
