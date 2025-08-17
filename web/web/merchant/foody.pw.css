@@ -1,42 +1,15 @@
 
-/* Nicer password eye (no dark circle) */
-.pw-field {
-  position: relative;
-}
+/* Light, clean password toggle */
+.pw-field { position: relative; }
 .pw-field input[type="password"],
-.pw-field input[type="text"] {
-  padding-right: 44px; /* room for eye */
-}
+.pw-field input[type="text"] { padding-right: 44px; }
 .pw-toggle {
-  position: absolute;
-  right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 36px;
-  height: 36px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent !important;
-  border: none !important;
-  outline: none;
-  border-radius: 10px;
-  cursor: pointer;
-  color: #7a7a7a;
-  line-height: 1;
-  padding: 0;
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center;
+  background: transparent !important; border: none !important; outline: none; border-radius: 10px;
+  cursor: pointer; color: #7a7a7a; line-height: 1; padding: 0;
 }
-.pw-toggle:hover, .pw-toggle:focus-visible {
-  background: rgba(0,0,0,.05) !important;
-}
-/* replace button text with neat emoji icon; changes on pressed */
+.pw-toggle:hover, .pw-toggle:focus-visible { background: rgba(0,0,0,.05) !important; }
 .pw-toggle { color: transparent; }
-.pw-toggle::after {
-  content: '👁';
-  font-size: 18px;
-  color: #5e5e5e;
-}
-.pw-toggle[aria-pressed="true"]::after {
-  content: '🙈';
-  color: #5e5e5e;
-}
+.pw-toggle::after { content: '👁'; font-size: 18px; color: #5e5e5e; }
+.pw-toggle[aria-pressed="true"]::after { content: '🙈'; color: #5e5e5e; }
