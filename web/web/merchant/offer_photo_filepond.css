@@ -1,32 +1,18 @@
 
-/* Pretty FilePond area for Create Offer */
+/* Foody — Offer Photo (FilePond) minimal polish — 2025-08-17 */
 .filepond--root {
-  margin-top: 8px;
-  border-radius: 16px;
-  border: 1px dashed rgba(0,0,0,.15);
-  background: rgba(0,0,0,.03);
-  transition: border-color .2s, background .2s, box-shadow .2s;
-}
-.filepond--root:focus-within,
-.filepond--root:hover {
-  border-color: rgba(0,0,0,.25);
-  background: rgba(0,0,0,.04);
-  box-shadow: 0 4px 14px rgba(0,0,0,.06);
-}
-.filepond--drop-label {
-  font-size: 14px;
-  color: #666;
-}
-.filepond--panel-root {
-  background-color: transparent;
-}
-.filepond--item-panel {
   border-radius: 12px;
+  background: rgba(255,255,255,0.02);
+  border: 1px dashed rgba(255,255,255,0.18);
 }
-.filepond--file-info {
-  font-size: 12px;
-}
-.filepond--image-preview {
-  border-radius: 12px;
-  overflow: hidden;
+.filepond--panel-root { border-radius: 12px; }
+.filepond--item-panel { background: rgba(255,255,255,0.06); }
+.filepond--drop-label { color: #ccc; }
+
+@media (prefers-color-scheme: light) {
+  .filepond--root {
+    background: rgba(0,0,0,0.02);
+    border-color: rgba(0,0,0,0.15);
+  }
+  .filepond--drop-label { color: #555; }
 }
