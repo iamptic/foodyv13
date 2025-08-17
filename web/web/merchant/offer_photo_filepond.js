@@ -1,5 +1,5 @@
 
-/*! Foody Offer Photo — force FilePond init (dynamic loader + 1:1 crop + tab hook) */
+/*! Foody Offer Photo — force FilePond init (dynamic loader + 1:1 crop) */
 (function(){
   var CDNS = {
     css: [
@@ -66,10 +66,7 @@
     inputs.forEach(initOn);
   }
   function observe(){
-    try {
-      var mo = new MutationObserver(initAll);
-      mo.observe(document.body, {childList:true, subtree:true});
-    } catch(_){}
+    try { new MutationObserver(initAll).observe(document.body, {childList:true, subtree:true}); } catch(_){}
   }
   async function boot(){
     try { await Promise.all(CDNS.css.map(addCss)); } catch(_){}

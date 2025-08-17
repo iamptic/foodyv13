@@ -1,5 +1,5 @@
 
-/*! Foody PW — ensure toggle for all password fields */
+/*! Foody PW — ensure toggle for all password fields (including repeat) */
 (function(){
   function ready(fn){ if(document.readyState==='complete'||document.readyState==='interactive') setTimeout(fn,0); else document.addEventListener('DOMContentLoaded',fn); }
   function wrap(input){
@@ -15,14 +15,6 @@
       input.focus({preventScroll:true});
     });
   }
-  function ensureAll(){
-    document.querySelectorAll('input[type="password"]').forEach(wrap);
-  }
-  ready(function(){
-    ensureAll();
-    try {
-      var mo = new MutationObserver(ensureAll);
-      mo.observe(document.body, {childList:true, subtree:true});
-    } catch(_){}
-  });
+  function ensureAll(){ document.querySelectorAll('input[type="password"]').forEach(wrap); }
+  ready(function(){ ensureAll(); try{ new MutationObserver(ensureAll).observe(document.body,{childList:true,subtree:true}); }catch(_){}});
 })();

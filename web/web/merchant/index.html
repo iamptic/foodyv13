@@ -68,6 +68,7 @@
     .ok-badge { color:#00C27A; font-weight:600; font-size: 13px; }
   </style>
 <link href="./foody.pw.css" rel="stylesheet">
+<link href="./offers_actions.css" rel="stylesheet">
 </head>
 <body>
   <div class="app">
@@ -408,5 +409,50 @@
 
 <script defer src="./offer_photo_filepond.js"></script>
 <script defer src="./foody.pw.js"></script>
+<script defer src="./offers_edit_delete.js"></script>
+
+<!-- Offer Edit Modal -->
+<div id="offerEditModal" class="modal" style="display:none;">
+  <div class="modal-dim"></div>
+  <div class="modal-card">
+    <div class="modal-title">Редактировать оффер</div>
+    <form id="offerEditForm" class="form grid two">
+      <input type="hidden" name="id" id="editId">
+      <label class="full">Название
+        <input name="title" id="editTitle" required>
+      </label>
+      <label>Старая цена
+        <input name="original_price" id="editOld" type="number" min="0" step="1">
+      </label>
+      <label>Новая цена
+        <input name="price" id="editPrice" type="number" min="0" step="1">
+      </label>
+      <label>Количество, шт
+        <input name="qty_total" id="editQty" type="number" min="1" step="1">
+      </label>
+      <label class="full">Срок действия
+        <input name="expires_at" id="editExpires" placeholder="YYYY-MM-DD HH:MM">
+      </label>
+      <label class="full">Категория
+        <select name="category" id="editCategory">
+          <option value="ready_meal">Готовые блюда</option>
+          <option value="bakery">Выпечка</option>
+          <option value="sushi">Суши/роллы</option>
+          <option value="salad">Салаты</option>
+          <option value="dessert">Десерты</option>
+          <option value="other">Другое</option>
+        </select>
+      </label>
+      <label class="full">Описание
+        <textarea name="description" id="editDesc" rows="3"></textarea>
+      </label>
+      <div class="full modal-actions">
+        <button type="button" class="btn btn-ghost" id="offerEditCancel">Отмена</button>
+        <button type="submit" class="btn btn-primary">Сохранить</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 </body>
 </html>
