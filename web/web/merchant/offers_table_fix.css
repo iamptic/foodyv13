@@ -1,0 +1,20 @@
+/* Offers table — consistent columns, no flicker */
+.foody-offers{margin-top:10px;border-radius:16px;background:#0b0f14;border:1px solid rgba(255,255,255,.06);box-shadow:0 24px 60px rgba(0,0,0,.35)}
+.foody-offers table{width:100%;border-collapse:separate;border-spacing:0}
+.foody-offers thead th{position:sticky;top:0;background:#0b0f14;color:#cbd5e1;font-weight:600;text-align:left;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.06)}
+.foody-offers tbody td{padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.06);vertical-align:middle}
+.foody-offers tbody tr:last-child td{border-bottom:0}
+.foody-offers .col-title{width:34%}
+.foody-offers .col-price{width:12%}
+.foody-offers .col-discount{width:10%}
+.foody-offers .col-qty{width:12%}
+.foody-offers .col-exp{width:20%}
+.foody-offers .col-actions{width:12%;text-align:right;white-space:nowrap}
+.foody-offers .btn{border-radius:12px;padding:8px 12px;border:1px solid transparent;cursor:pointer;font-weight:600}
+.foody-offers .btn-ghost{background:transparent;border-color:rgba(255,255,255,.12);color:#e5e7eb}
+.foody-offers .btn-ghost:hover{background:rgba(255,255,255,.06)}
+.foody-offers .btn-danger{background:#dc2626;color:#fff;border:0}
+.foody-offers .btn-danger:hover{filter:brightness(.95)}
+.foody-offers .row-fade{animation:rowFade .12s ease-out both}
+@keyframes rowFade{from{opacity:.6;transform:translateY(2px)}to{opacity:1;transform:none}}
+.foody-offers .hint{color:#94a3b8;font-size:14px;padding:14px 16px}
