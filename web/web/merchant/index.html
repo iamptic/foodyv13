@@ -14,7 +14,7 @@
   <script defer src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ru.js"></script>
   <script>window.foodyApi = (window.__FOODY__ && window.__FOODY__.FOODY_API) || window.foodyApi || 'https://foodyback-production.up.railway.app';</script>
   <script defer src="/config.js"></script>
-  <script defer src="./app.js?v=no247-1"></script>
+  <script defer src="./app.js?v=no247-2"></script>
   <style>
     #cityModal[aria-hidden="true"] { display: none; }
     #cityModal[aria-hidden="false"] { display: block; }
@@ -137,7 +137,7 @@
         <input name="qty_total" type="number" min="1" step="1" value="1" required>
       </label>
 
-      <!-- Срок годности продукта (контрольное поле) -->
+      <!-- Срок годности продукта (рабочее поле) -->
       <label class="full">Срок годности продукта
         <input name="best_before" id="best_before" type="datetime-local">
         <div class="muted small">Будет сохранено и учитываться при проверках.</div>
@@ -312,9 +312,11 @@
     <div id="toast"></div>
   </div>
 
-<link rel="stylesheet" href="./foody.photo.css?v=mini2">
-<script src="./foody.photo.js?v=mini2" defer></script>
-<script src="./foody.validate.js?v=mini2" defer></script>
+<!-- CDN FilePond JS (оставляем только JS, CSS уже в <head>) -->
+<script src="https://unpkg.com/filepond@4.30.7/dist/filepond.min.js" defer></script>
+<script src="https://unpkg.com/filepond-plugin-image-preview@4.6.12/dist/filepond-plugin-image-preview.min.js" defer></script>
+<script src="https://unpkg.com/filepond-plugin-file-validate-type@1.2.8/dist/filepond-plugin-file-validate-type.min.js" defer></script>
+<script src="https://unpkg.com/filepond-plugin-file-validate-size@2.2.8/dist/filepond-plugin-file-validate-size.min.js" defer></script>
 
 </body>
 </html>

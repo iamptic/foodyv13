@@ -304,38 +304,7 @@
 
   attachPhoneMask($('#loginPhone'));
   attachPhoneMask($('#registerPhone'));
-  
-  // Hook offer form submit: validate dates and normalize ISO
-  on('#offerForm','submit', (e) => {
-    const err = $('#offerError');
-    const ex = $('#expires_at'); const bb = $('#best_before') || $('#bestBefore');
-    function toIso(val){
-      return dtLocalToIso && dtLocalToIso(val) || null;
-    }
-    // Validate: expires_at <= best_before
-    if (ex && bb && ex.value && bb.value){
-      const exIso = toIso(ex.value), bbIso = toIso(bb.value);
-      const exDt = exIso? new Date(exIso) : null;
-      const bbDt = bbIso? new Date(bbIso) : null;
-      if (exDt && bbDt && exDt.getTime() > bbDt.getTime()){
-        e.preventDefault();
-        if (err){ err.textContent = '«Срок действия оффера» не может быть позже «Срока годности».'; err.classList.remove('hidden'); }
-        return;
-      }
-    }
-    // Normalize expires_at to ISO for API
-    if (ex && ex.value){
-      const iso = toIso(ex.value);
-      if (iso) ex.value = iso;
-    }
-    // Normalize best_before to ISO if present (only if backend accepts extra fields)
-    // If backend doesn't accept — comment the next block.
-    if (bb && bb.name && bb.value){
-      const iso = toIso(bb.value);
-      if (iso) bb.value = iso;
-    }
-  });
-attachPhoneMask($('#profilePhone'));
+  attachPhoneMask($('#profilePhone'));
   setupPwToggle('toggleLoginPw','loginPassword');
   setupPwToggle('toggleRegisterPw','registerPassword');
   setupPwToggle('pwOldToggle','pwOld');
@@ -531,39 +500,6 @@ attachPhoneMask($('#profilePhone'));
       }
       bindDiscountPresets();
       bindExpirePresets();
-      // Init best_before (Срок годности продукта)
-      const bb = $('#best_before') || $('#bestBefore');
-      if (window.flatpickr && bb && !bb._flatpickr) {
-        if (window.flatpickr.l10ns && window.flatpickr.l10ns.ru) { flatpickr.localize(flatpickr.l10ns.ru); }
-        flatpickr(bb, {
-          enableTime: true, time_24hr: true, minuteIncrement: 5,
-          dateFormat: 'Y-m-d H:i', altInput: true, altFormat: 'd.m.Y H:i',
-          minDate: 'today'
-        });
-      }
-
-      // Guard: expires_at must not exceed best_before
-      (function(){
-        const ex = $('#expires_at'); const bbx = $('#best_before') || $('#bestBefore');
-        function parse(val){
-          if (!val) return null;
-          if (/^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}$/.test(val)) return new Date(val.replace(' ', 'T'));
-          if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(val)) return new Date(val);
-          const d=new Date(val); return isNaN(d)?null:d;
-        }
-        function fmt(d){ const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),da=String(d.getDate()).padStart(2,'0'),h=String(d.getHours()).padStart(2,'0'),mi=String(d.getMinutes()).padStart(2,'0'); return `${y}-${m}-${da} ${h}:${mi}`; }
-        function guard(){
-          if (!ex || !bbx || !ex.value || !bbx.value) return;
-          const ea=parse(ex.value), bbv=parse(bbx.value);
-          if (ea && bbv && ea.getTime()>bbv.getTime()){
-            ex.value = fmt(bbv);
-            ex.dispatchEvent(new Event('change', {bubbles:true}));
-            showToast && showToast('Срок действия укорочен до срока годности.');
-          }
-        }
-        ['change','blur','input'].forEach(ev=>{ ex && ex.addEventListener(ev, guard); bbx && bbx.addEventListener(ev, guard); });
-      })();
-
     } catch (e) {}
   }
 
@@ -597,65 +533,7 @@ attachPhoneMask($('#profilePhone'));
     root.innerHTML = head + rows;
   }
 
-  
-// --- Offer create submit (safe, overrides default GET) ---
-on('#offerForm','submit', async (e) => {
-  try {
-    // block default GET ?submission
-    e.preventDefault();
-
-    const form = e.currentTarget;
-    const btn = form.querySelector('button[type="submit"]');
-    const err = document.querySelector('#offerError');
-    if (err) err.classList.add('hidden');
-
-    const fd = new FormData(form);
-    const toIso = (v) => (typeof dtLocalToIso==='function' ? dtLocalToIso(v) : null);
-
-    // Read fields
-    const title = (fd.get('title')||'').toString().trim();
-    const original_price = Number(fd.get('original_price')||fd.get('price')||0);
-    const price = Number(fd.get('price')||0);
-    const qty_total = parseInt((fd.get('qty_total')||'1').toString(),10) || 1;
-    const category = (fd.get('category')||'other').toString();
-    const image_url = (fd.get('image_url')||'').toString();
-    const description = (fd.get('description')||'').toString().slice(0,160).trim();
-
-    // Dates
-    const exEl = document.getElementById('expires_at');
-    const bbEl = document.getElementById('best_before') || document.getElementById('bestBefore');
-    const expires_at = exEl && exEl.value ? (toIso(exEl.value) || exEl.value) : null;
-    const best_before = bbEl && bbEl.value ? (toIso(bbEl.value) || bbEl.value) : null;
-
-    // Basic validations
-    if (!title) { if (err){ err.textContent='Укажите название'; err.classList.remove('hidden'); } return; }
-    if (!(price > 0) || !(original_price > 0) || !(price < original_price)) { if (err){ err.textContent='Новая цена должна быть меньше обычной'; err.classList.remove('hidden'); } return; }
-    if (!(qty_total > 0)) { if (err){ err.textContent='Количество должно быть больше 0'; err.classList.remove('hidden'); } return; }
-    if (!expires_at) { if (err){ err.textContent='Укажите «Срок действия оффера»'; err.classList.remove('hidden'); } return; }
-    if (best_before && expires_at && new Date(expires_at) > new Date(best_before)) { if (err){ err.textContent='«Срок действия» не может быть позже «Срока годности»'; err.classList.remove('hidden'); } return; }
-
-    // Compose payload
-    const payload = { title, price, original_price, qty_total, expires_at, category, image_url, description };
-    if (best_before) payload.best_before = best_before;
-
-    if (btn){ btn.disabled = true; btn.textContent = 'Сохранение…'; }
-    const res = await api('/api/v1/merchant/offers', { method: 'POST', body: JSON.stringify(payload) });
-    showToast && showToast('Оффер сохранён ✅');
-
-    // Reset minimal fields (keep category and photo)
-    form.reset();
-    if (btn){ btn.disabled=false; btn.textContent='Сохранить оффер'; }
-
-    // Refresh offers and switch tab
-    activateTab && activateTab('offers');
-    if (typeof loadOffers==='function') await loadOffers();
-  } catch (err) {
-    console.error(err);
-    const el = document.querySelector('#offerError');
-    if (el){ el.textContent = (err && err.message) ? err.message : 'Ошибка сохранения'; el.classList.remove('hidden'); }
-  }
-});
-document.addEventListener('DOMContentLoaded', () => {
+  document.addEventListener('DOMContentLoaded', () => {
     try {
       attachPhoneMask($('#loginPhone'));
       attachPhoneMask($('#registerPhone'));
