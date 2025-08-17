@@ -1,9 +1,9 @@
 import os
+from fastapi.staticfiles import StaticFiles
 from typing import Any, Dict, Optional, Set
-from typing import Optional
 
 import asyncpg
-from fastapi import FastAPI, HTTPException, Body, Request
+from fastapi import FastAPI, HTTPException, Body, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from datetime import datetime, timezone, time as dtime
@@ -23,6 +23,18 @@ CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o
 RECOVERY_SECRET = os.getenv("RECOVERY_SECRET", "foodyDevRecover123")
 
 app = FastAPI(title=APP_NAME, version="1.0")
+
+# Foody uploads (local fallback): serve /u/*
+UPLOAD_DIR = os.environ.get("FOODY_UPLOAD_DIR", "/app/uploads")
+try:
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+except Exception:
+    try:
+        os.makedirs("/tmp/uploads", exist_ok=True)
+        UPLOAD_DIR = "/tmp/uploads"
+    except Exception:
+        pass
+app.mount("/u", StaticFiles(directory=UPLOAD_DIR), name="u")
 
 # CORS before routes
 app.add_middleware(
@@ -77,6 +89,7 @@ async def _migrate():
             "ALTER TABLE merchants ADD COLUMN IF NOT EXISTS auth_login TEXT;",
             "ALTER TABLE merchants ADD COLUMN IF NOT EXISTS open_time TIME;",
             "ALTER TABLE merchants ADD COLUMN IF NOT EXISTS close_time TIME;",
+            "ALTER TABLE merchants ADD COLUMN IF NOT EXISTS image_url TEXT;",
         ]:
             await conn.execute(ddl)
 
@@ -217,20 +230,6 @@ class OfferCreate(BaseModel):
     description: Optional[str] = None
 
 @app.on_event("startup")
-
-class OfferUpdate(BaseModel):
-    # optional fields for partial update
-    merchant_id: Optional[int] = None
-    restaurant_id: Optional[int] = None
-    title: Optional[str] = None
-    price: Optional[float] = None
-    original_price: Optional[float] = None
-    qty_total: Optional[int] = None
-    qty_left: Optional[int] = None
-    expires_at: Optional[str] = None  # ISO string (will be parsed)
-    image_url: Optional[str] = None
-    category: Optional[str] = None
-    description: Optional[str] = None
 async def startup_event():
     await _connect_pool()
     await _migrate()
@@ -277,7 +276,7 @@ async def get_profile(restaurant_id: int, request: Request):
     async with _pool.acquire() as conn:
         await _require_auth(conn, restaurant_id, api_key)
         row = await conn.fetchrow(
-            "SELECT id, name, login, phone, email, address, city, lat, lng, open_time, close_time FROM merchants WHERE id=$1",
+            "SELECT id, name, login, phone, email, address, city, lat, lng, open_time, close_time, image_url FROM merchants WHERE id=$1",
             restaurant_id
         )
         if not row:
@@ -299,6 +298,10 @@ async def update_profile(payload: Dict[str, Any] = Body(...), request: Request =
 
     async with _pool.acquire() as conn:
         await _require_auth(conn, restaurant_id, api_key)
+
+        # optional image_url
+        if payload.get("image_url") is not None:
+            await conn.execute("UPDATE merchants SET image_url=$1 WHERE id=$2", str(payload.get("image_url") or ""), restaurant_id)
 
         name    = (payload.get("name") or "").strip() or None
         phone   = (payload.get("phone") or "").strip() or None
@@ -329,6 +332,31 @@ async def update_profile(payload: Dict[str, Any] = Body(...), request: Request =
         )
         return {"ok": True}
 
+
+@app.post("/upload")
+async def upload_image(file: UploadFile = File(...), request: Request = None):
+    # lightweight local uploader (R2 can be added later)
+    if not file or not file.filename:
+        raise HTTPException(status_code=400, detail="file required")
+    name = file.filename
+    # extension whitelist
+    ext = os.path.splitext(name)[1].lower()
+    if ext not in [".jpg", ".jpeg", ".png", ".webp", ".gif"]:
+        ext = ".jpg"
+    from uuid import uuid4
+    safe = uuid4().hex + ext
+    dest = os.path.join(UPLOAD_DIR, safe)
+    data = await file.read()
+    if len(data) > 7 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="file too large")
+    try:
+        with open(dest, "wb") as f:
+            f.write(data)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="save failed")
+    base = str(request.base_url).rstrip("/")
+    url = f"{base}/u/{safe}"
+    return {"url": url}
 @app.get("/api/v1/merchant/offers")
 async def list_offers(restaurant_id: int, request: Request):
     api_key = _get_api_key(request)
@@ -367,120 +395,81 @@ class OfferCreate(BaseModel):
     description: Optional[str] = None
 
 @app.post("/api/v1/merchant/offers")
-async def create_offer(payload: OfferCreate, request: Request):
 
 @app.patch("/api/v1/merchant/offers/{offer_id}")
-async def update_offer(offer_id: int, payload: OfferUpdate, request: Request):
+async def update_offer(offer_id: int, payload: Dict[str, Any] = Body(...), request: Request = None):
     api_key = _get_api_key(request)
     async with _pool.acquire() as conn:
-        # find offer's owner (rid) and check access
-        row = await conn.fetchrow("SELECT merchant_id, restaurant_id FROM offers WHERE id=$1", offer_id)
-        if not row:
+        # Ensure ownership
+        owner = await conn.fetchrow("SELECT merchant_id, restaurant_id FROM offers WHERE id=$1", offer_id)
+        if not owner:
             raise HTTPException(status_code=404, detail="offer not found")
-        rid_guess = row["merchant_id"] or row["restaurant_id"]
-        await _require_auth(conn, int(rid_guess), api_key)
+        rid = owner["merchant_id"] or owner["restaurant_id"]
+        await _require_auth(conn, int(rid), api_key)
 
-        # prepare updated fields
+        # Prepare fields
         def _to_float(v):
             try:
-                if v is None:
-                    return None
-                if isinstance(v, (int, float)):
-                    return float(v)
-                s = str(v).replace(',', '.').strip()
-                return float(s) if s else None
-            except Exception:
-                return None
-        price_f = _to_float(payload.price) if hasattr(payload, "price") else None
-        orig_f  = _to_float(payload.original_price) if hasattr(payload, "original_price") else None
-        price_cents = int(round(price_f * 100)) if price_f is not None else None
-        original_price_cents = int(round(orig_f * 100)) if orig_f is not None else None
+                if v is None: return None
+                if isinstance(v, (int,float)): return float(v)
+                return float(str(v).replace(',','.'))
+            except Exception: return None
 
-        qty_total = payload.qty_total if hasattr(payload, "qty_total") else None
-        qty_left  = payload.qty_left  if hasattr(payload, "qty_left")  else None
+        price_f = _to_float(payload.get("price"))
+        orig_f  = _to_float(payload.get("original_price"))
+        price_cents = int(round(price_f*100)) if price_f is not None else None
+        original_price_cents = int(round(orig_f*100)) if orig_f is not None else None
+        qty_total = payload.get("qty_total")
+        qty_left  = payload.get("qty_left")
         if qty_total is not None and qty_left is None:
             qty_left = qty_total
 
         expires = None
-        if hasattr(payload, "expires_at") and payload.expires_at is not None:
-            expires = _parse_expires_at(payload.expires_at)
+        if payload.get("expires_at") is not None:
+            expires = _parse_expires_at(payload.get("expires_at"))
             if not expires:
                 raise HTTPException(status_code=400, detail="invalid expires_at")
 
-        img = (payload.image_url or "").strip() if hasattr(payload, "image_url") and payload.image_url is not None else None
+        img = None
+        if "image_url" in payload:
+            img = (payload.get("image_url") or "").strip()
 
-        # Build three attempts depending on schema
-        # 1) both float & cents columns
-        sets = []
-        vals = []
-        idx = 1
-        if payload.title is not None:
-            sets.append(f"title = ${idx}"); vals.append(payload.title); idx+=1
-        if price_f is not None:
-            sets.append(f"price = ${idx}"); vals.append(price_f); idx+=1
-        if price_cents is not None:
-            sets.append(f"price_cents = ${idx}"); vals.append(price_cents); idx+=1
-        if orig_f is not None:
-            sets.append(f"original_price = ${idx}"); vals.append(orig_f); idx+=1
-        if original_price_cents is not None:
-            sets.append(f"original_price_cents = ${idx}"); vals.append(original_price_cents); idx+=1
-        if qty_total is not None:
-            sets.append(f"qty_total = ${idx}"); vals.append(qty_total); idx+=1
-        if qty_left is not None:
-            sets.append(f"qty_left = ${idx}"); vals.append(qty_left); idx+=1
-        if expires is not None:
-            sets.append(f"expires_at = ${idx}"); vals.append(expires); idx+=1
-        if img is not None:
-            sets.append(f"image_url = ${idx}"); vals.append(img); idx+=1
-        if payload.category is not None:
-            sets.append(f"category = ${idx}"); vals.append(payload.category); idx+=1
-        if payload.description is not None:
-            sets.append(f"description = ${idx}"); vals.append(payload.description); idx+=1
+        # Build SETs
+        sets = []; vals = []; idx = 1
+        def add(col, val):
+            nonlocal idx
+            sets.append(f"{col} = ${idx}"); vals.append(val); idx += 1
+
+        if payload.get("title") is not None: add("title", payload.get("title"))
+        if price_f is not None: add("price", price_f)
+        if price_cents is not None: add("price_cents", price_cents)
+        if orig_f is not None: add("original_price", orig_f)
+        if original_price_cents is not None: add("original_price_cents", original_price_cents)
+        if qty_total is not None: add("qty_total", int(qty_total))
+        if qty_left is not None: add("qty_left", int(qty_left))
+        if expires is not None: add("expires_at", expires)
+        if img is not None: add("image_url", img)
+        if payload.get("category") is not None: add("category", payload.get("category"))
+        if payload.get("description") is not None: add("description", payload.get("description"))
 
         if not sets:
-            return {"id": offer_id}  # nothing to update
+            return {"id": offer_id}
 
-        # Attempt updates with decreasing set of column variants
-        sql1 = "UPDATE offers SET " + ", ".join(sets) + f" WHERE id = ${idx} RETURNING id"
-        vals1 = vals + [offer_id]
+        # Try update with all columns
         try:
-            row2 = await conn.fetchrow(sql1, *vals1)
+            row = await conn.fetchrow("UPDATE offers SET " + ", ".join(sets) + f" WHERE id=${idx} RETURNING id", *(vals + [offer_id]))
         except Exception:
-            # remove float columns
-            sets2, vals2 = [], []
-            for s,v in zip(sets, vals):
-                if " price " in f" {s} " or " original_price " in f" {s} ":
-                    continue
+            # Retry without float columns
+            sets2 = []; vals2 = []
+            for s, v in zip(sets, vals):
+                if s.startswith("price =") or s.startswith("original_price ="): continue
                 sets2.append(s); vals2.append(v)
-            sql2 = "UPDATE offers SET " + ", ".join(sets2) + f" WHERE id = ${len(vals2)+1} RETURNING id"
-            try:
-                row2 = await conn.fetchrow(sql2, *(vals2 + [offer_id]))
-            except Exception:
-                # remove cents columns, try float-only
-                sets3, vals3 = [], []
-                # rebuild keeping float versions only
-                idx=1
-                if payload.title is not None:
-                    sets3.append(f"title = ${idx}"); vals3.append(payload.title); idx+=1
-                if price_f is not None:
-                    sets3.append(f"price = ${idx}"); vals3.append(price_f); idx+=1
-                if orig_f is not None:
-                    sets3.append(f"original_price = ${idx}"); vals3.append(orig_f); idx+=1
-                if qty_total is not None:
-                    sets3.append(f"qty_total = ${idx}"); vals3.append(qty_total); idx+=1
-                if qty_left is not None:
-                    sets3.append(f"qty_left = ${idx}"); vals3.append(qty_left); idx+=1
-                if expires is not None:
-                    sets3.append(f"expires_at = ${idx}"); vals3.append(expires); idx+=1
-                if img is not None:
-                    sets3.append(f"image_url = ${idx}"); vals3.append(img); idx+=1
-                if payload.category is not None:
-                    sets3.append(f"category = ${idx}"); vals3.append(payload.category); idx+=1
-                if payload.description is not None:
-                    sets3.append(f"description = ${idx}"); vals3.append(payload.description); idx+=1
-                sql3 = "UPDATE offers SET " + ", ".join(sets3) + f" WHERE id = ${len(vals3)+1} RETURNING id"
-                row2 = await conn.fetchrow(sql3, *(vals3 + [offer_id]))
-        return {"id": row2["id"]}
+            if not sets2:
+                raise HTTPException(status_code=400, detail="nothing to update")
+            row = await conn.fetchrow("UPDATE offers SET " + ", ".join(sets2) + f" WHERE id=${len(vals2)+1} RETURNING id", *(vals2 + [offer_id]))
+
+        return {"id": row["id"]}
+async def create_offer(payload: OfferCreate, request: Request):
     """
     Safe insert for offers: writes both merchant_id and restaurant_id,
     coalesces image_url to non-null string, supports price/price_cents schemas.
@@ -618,22 +607,21 @@ async def change_password(payload: dict = Body(...), request: Request = None):
 
 
 @app.delete("/api/v1/merchant/offers/{offer_id}")
-async def delete_offer(offer_id: int, request: Request):
+async def delete_offer(offer_id: int, request: Request = None):
     api_key = _get_api_key(request)
     async with _pool.acquire() as conn:
-        row = await conn.fetchrow("SELECT merchant_id, restaurant_id FROM offers WHERE id=$1", offer_id)
-        if not row:
+        owner = await conn.fetchrow("SELECT merchant_id, restaurant_id FROM offers WHERE id=$1", offer_id)
+        if not owner:
             raise HTTPException(status_code=404, detail="offer not found")
-        rid_guess = row["merchant_id"] or row["restaurant_id"]
-        await _require_auth(conn, int(rid_guess), api_key)
+        rid = owner["merchant_id"] or owner["restaurant_id"]
+        await _require_auth(conn, int(rid), api_key)
 
-        # soft delete via status if column exists; otherwise hard delete
+        # Try soft-delete
         try:
-            row2 = await conn.fetchrow("UPDATE offers SET status = 'deleted' WHERE id=$1 RETURNING id", offer_id)
-            if row2:
-                return {"id": row2["id"], "deleted": True, "mode": "soft"}
+            row = await conn.fetchrow("UPDATE offers SET status='deleted' WHERE id=$1 RETURNING id", offer_id)
+            if row: return {"id": row["id"], "deleted": True, "mode": "soft"}
         except Exception:
             pass
-        # fallback hard delete
+
         await conn.execute("DELETE FROM offers WHERE id=$1", offer_id)
         return {"id": offer_id, "deleted": True, "mode": "hard"}
