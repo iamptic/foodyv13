@@ -1,4 +1,3 @@
-# ====== OFFERS EDIT/DELETE PATCH ======
 from typing import Optional
 from fastapi import Request, HTTPException
 
@@ -19,31 +18,21 @@ async def patch_offer(offer_id: int, payload: dict, request: Request):
     key = _require_key(request)
     async with pool.acquire() as conn:
         merchant_id = await _get_merchant_id(conn, key)
-        # Build dynamic SET
         fields = []
         values = []
         mapping = {
-            "title":"title",
-            "price":"price",
-            "price_cents":"price_cents",
-            "original_price":"original_price",
-            "original_price_cents":"original_price_cents",
-            "qty_total":"qty_total",
-            "qty_left":"qty_left",
-            "expires_at":"expires_at",
-            "image_url":"image_url",
-            "category":"category",
-            "description":"description",
+            "title":"title","price":"price","price_cents":"price_cents",
+            "original_price":"original_price","original_price_cents":"original_price_cents",
+            "qty_total":"qty_total","qty_left":"qty_left","expires_at":"expires_at",
+            "image_url":"image_url","category":"category","description":"description",
             "status":"status",
         }
         for k,v in payload.items():
             col = mapping.get(k)
-            if col is None: 
-                continue
+            if col is None: continue
             fields.append(f"{col} = ${len(values)+1}")
             values.append(v)
-        if not fields:
-            return {"updated": 0}
+        if not fields: return {"updated": 0}
         values.extend([offer_id, merchant_id])
         q = "UPDATE offers SET " + ", ".join(fields) + " WHERE id=$%d AND merchant_id=$%d" % (len(values)-1, len(values))
         res = await conn.execute(q, *values)
@@ -54,12 +43,9 @@ async def delete_offer(offer_id: int, request: Request):
     key = _require_key(request)
     async with pool.acquire() as conn:
         merchant_id = await _get_merchant_id(conn, key)
-        # soft delete
         await conn.execute("UPDATE offers SET status='deleted' WHERE id=$1 AND merchant_id=$2", offer_id, merchant_id)
     return {"ok": True}
 
 @app.post("/api/v1/merchant/offers/{offer_id}/delete")
 async def delete_offer_post(offer_id: int, request: Request):
-    # Fallback for proxies that block DELETE
     return await delete_offer(offer_id, request)
-# ===== END PATCH =====
