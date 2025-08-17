@@ -488,4 +488,4 @@ async def change_password(payload: dict = Body(...), request: Request = None):
         await conn.execute("UPDATE merchants SET password_hash=$2 WHERE id=$1", restaurant_id, _hash_password(new_password))
         return {"ok": True}
 from offers_edit_delete_patch import register_offer_routes
-register_offer_routes(app, pool)
+register_offer_routes(app, _pool)
