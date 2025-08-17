@@ -1,6 +1,7 @@
 
-/*! foody.validate.js — micro-validation + summary (idempotent, safe) */
+/*! foody.validate.js — micro-validation + summary (v2, safer & idempotent) */
 (function(){
+  window.__FOODY_ENH_VERSION = 'mini2';
   const onReady=(fn)=>{ if(document.readyState==='complete'||document.readyState==='interactive') setTimeout(fn,0); else document.addEventListener('DOMContentLoaded',fn); };
   onReady(init); window.addEventListener('load', init);
 
@@ -10,19 +11,20 @@
 
     const base  = form.querySelector('#offerOldPrice,[name="original_price"]');
     const final = form.querySelector('#offerPrice,[name="price"]');
-    const disc  = form.querySelector('#discountPercent');
     const qty   = form.querySelector('[name="qty_total"]');
     const ex    = form.querySelector('#expires_at,[name="expires_at"]');
     const bb    = form.querySelector('#best_before,#bestBefore');
     const err   = form.querySelector('#offerError');
-    const chips = Array.from(form.querySelectorAll('#discountPresets .chip'));
+    const chipsWrap = form.querySelector('#discountPresets');
+    const chips = chipsWrap ? Array.from(chipsWrap.querySelectorAll('.chip')) : [];
+    const disc  = form.querySelector('#discountPercent'); // может отсутствовать
 
     // description counter (max 160)
     const desc = form.querySelector('textarea[name="description"]');
     if (desc && !desc._foodyCounter){
       const cnt = document.createElement('div'); cnt.className='muted small'; cnt.style.textAlign='right';
       desc.insertAdjacentElement('afterend', cnt);
-      const upd=()=>{ const n=(desc.value||'').length; cnt.textContent = `${n}/160`; if(n>160){ cnt.style.color='#ff7b7b'; }else{ cnt.style.color=''; } };
+      const upd=()=>{ const n=(desc.value||'').length; cnt.textContent = `${n}/160`; cnt.style.color = (n>160)?'#ff7b7b':''; };
       desc.addEventListener('input', upd); upd(); desc._foodyCounter=cnt;
     }
 
@@ -44,20 +46,21 @@
 
     function markChip(val){ chips.forEach(x=> x.classList.toggle('active', parseInt(x.dataset.discount,10)===parseInt(val,10))); }
 
-    function recalcFromDiscount(){
-      if (!base || !final || !disc) return;
+    function recalcFromDiscount(dVal){
+      if (!base || !final) return;
       const b = money(base.value);
-      const d = parseInt(disc.value||'0',10);
+      const d = dVal!=null ? parseInt(dVal,10) : (disc ? parseInt(disc.value||'0',10) : NaN);
       if (isFinite(b) && isFinite(d)){
         final.value = String(Math.round(b * (1 - clamp(d,0,99)/100)));
       }
+      if (disc && isFinite(d)) disc.value = String(clamp(d,0,99));
       markChip(d);
       updateSummary();
     }
     function recalcFromFinal(){
-      if (!base || !final || !disc) return;
+      if (!base || !final) return;
       const b = money(base.value), f = money(final.value);
-      if (isFinite(b) && isFinite(f) && b>0){
+      if (disc && isFinite(b) && isFinite(f) && b>0){
         const d = Math.round((1 - f/b)*100);
         disc.value = String(clamp(d,0,99));
         markChip(disc.value);
@@ -74,15 +77,18 @@
     }
 
     // Bindings (idempotent)
-    if (disc && !disc._bound){ disc.addEventListener('input', recalcFromDiscount); disc.addEventListener('change', recalcFromDiscount); disc._bound=true; }
-    if (base && !base._bound){ base.addEventListener('input', recalcFromDiscount); base.addEventListener('change', recalcFromDiscount); base._bound=true; }
+    if (disc && !disc._bound){ disc.addEventListener('input', ()=>recalcFromDiscount()); disc.addEventListener('change', ()=>recalcFromDiscount()); disc._bound=true; }
+    if (base && !base._bound){ base.addEventListener('input', ()=>recalcFromDiscount()); base.addEventListener('change', ()=>recalcFromDiscount()); base._bound=true; }
     if (final && !final._bound){ final.addEventListener('input', recalcFromFinal); final.addEventListener('change', recalcFromFinal); final._bound=true; }
-    chips.forEach(ch=> !ch._bound && (ch._bound=true, ch.addEventListener('click', e=>{ e.preventDefault(); const d=parseInt(ch.dataset.discount,10); if(!isFinite(d)) return; disc.value=String(d); recalcFromDiscount(); })));
-
+    chips.forEach(ch=> !ch._bound && (ch._bound=true, ch.addEventListener('click', e=>{
+      e.preventDefault(); const d=parseInt(ch.dataset.discount,10);
+      if(!isFinite(d)) return;
+      recalcFromDiscount(d);
+    })));
     if (qty && !qty._bound){ qty.addEventListener('input', updateSummary); qty._bound=true; }
 
     // initial compute
-    recalcFromDiscount(); updateSummary();
+    recalcFromDiscount();
 
     // Submit guard
     const formSubmit = (e)=>{
