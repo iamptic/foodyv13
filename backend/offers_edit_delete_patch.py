@@ -2,12 +2,19 @@
 from typing import Optional
 from fastapi import Request, HTTPException, APIRouter
 
-def register_offer_routes(app, pool):
+def register_offer_routes(app, pool: Optional[object] = None):
     """
     Register PATCH/DELETE endpoints for offers on the given FastAPI `app`.
-    Must be called from main.py AFTER `app` and `pool` are created.
+    You may pass `pool` explicitly or set `app.state.pool` earlier.
     """
+
     router = APIRouter()
+
+    def _resolve_pool():
+        p = pool or getattr(app.state, "pool", None)
+        if p is None:
+            raise HTTPException(status_code=500, detail="DB pool is not configured")
+        return p
 
     def _require_key(request: Request) -> str:
         key = request.headers.get("X-Foody-Key")
@@ -23,30 +30,20 @@ def register_offer_routes(app, pool):
 
     @router.patch("/api/v1/merchant/offers/{offer_id}")
     async def patch_offer(offer_id: int, payload: dict, request: Request):
+        p = _resolve_pool()
         key = _require_key(request)
-        async with pool.acquire() as conn:
+        async with p.acquire() as conn:
             merchant_id = await _get_merchant_id(conn, key)
-            # Build dynamic SET
-            fields = []
-            values = []
+            fields, values = [], []
             mapping = {
-                "title":"title",
-                "price":"price",
-                "price_cents":"price_cents",
-                "original_price":"original_price",
-                "original_price_cents":"original_price_cents",
-                "qty_total":"qty_total",
-                "qty_left":"qty_left",
-                "expires_at":"expires_at",
-                "image_url":"image_url",
-                "category":"category",
-                "description":"description",
-                "status":"status",
+                "title":"title","price":"price","price_cents":"price_cents",
+                "original_price":"original_price","original_price_cents":"original_price_cents",
+                "qty_total":"qty_total","qty_left":"qty_left","expires_at":"expires_at",
+                "image_url":"image_url","category":"category","description":"description","status":"status",
             }
             for k,v in (payload or {}).items():
                 col = mapping.get(k)
-                if col is None:
-                    continue
+                if col is None: continue
                 fields.append(f"{col} = ${len(values)+1}")
                 values.append(v)
             if not fields:
@@ -58,16 +55,15 @@ def register_offer_routes(app, pool):
 
     @router.delete("/api/v1/merchant/offers/{offer_id}")
     async def delete_offer(offer_id: int, request: Request):
+        p = _resolve_pool()
         key = _require_key(request)
-        async with pool.acquire() as conn:
+        async with p.acquire() as conn:
             merchant_id = await _get_merchant_id(conn, key)
-            # Soft delete
             await conn.execute("UPDATE offers SET status='deleted' WHERE id=$1 AND merchant_id=$2", offer_id, merchant_id)
         return {"ok": True}
 
     @router.post("/api/v1/merchant/offers/{offer_id}/delete")
     async def delete_offer_post(offer_id: int, request: Request):
-        # Fallback for proxies that block DELETE
         return await delete_offer(offer_id, request)
 
     app.include_router(router)
