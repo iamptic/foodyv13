@@ -546,7 +546,55 @@
       CityPicker.setInitial('#profileCityOpen', '#profileCityValue');
       bindWorkPresets('.work-presets[data-for="register"]', 'input[name="work_from"]', 'input[name="work_to"]');
       bindWorkPresets('.work-presets[data-for="profile"]', '#profile_work_from', '#profile_work_to');
-      const ok = gate(); if (!ok) activateTab('auth');
+      
+// --- Offer create submit (safe minimal) ---
+on('#offerForm','submit', async (e) => {
+  e.preventDefault();
+  const form = e.currentTarget;
+  const err = form.querySelector('#offerError');
+  if (err) { err.classList.add('hidden'); }
+  const fd = new FormData(form);
+  const toNum = (v) => { const n = parseFloat(String(v||'').replace(',', '.')); return isFinite(n) ? n : 0; };
+  const toInt = (v) => { const n = parseInt(String(v||'').trim(), 10); return isFinite(n) ? n : 0; };
+  const trim = (v) => String(v||'').trim();
+
+  const payload = {
+    restaurant_id: state.rid || undefined,
+    title: trim(fd.get('title')),
+    original_price: toNum(fd.get('original_price')||fd.get('price_base')) || undefined,
+    price: toNum(fd.get('price')),
+    qty_total: toInt(fd.get('qty_total')||fd.get('quantity')),
+    category: trim(fd.get('category')) || 'other',
+    description: trim(fd.get('description')) || '',
+    image_url: trim(fd.get('image_url')) || undefined,
+  };
+  const ex = trim(fd.get('expires_at'));
+  if (ex) payload.expires_at = dtLocalToIso(ex) || ex;
+  const bb = trim(fd.get('best_before'));
+  if (bb) payload.best_before = dtLocalToIso(bb) || bb;
+
+  // quick validations
+  if (!payload.title) { showInlineError('#offerError','Укажите название'); return; }
+  if (!(payload.qty_total > 0)) { showInlineError('#offerError','Количество должно быть больше 0'); return; }
+  if (!(payload.price > 0)) { showInlineError('#offerError','Новая цена должна быть больше 0'); return; }
+  if (payload.original_price && payload.price >= payload.original_price) { showInlineError('#offerError','Новая цена должна быть меньше обычной'); return; }
+  if (!payload.expires_at) { showInlineError('#offerError','Укажите срок действия оффера'); return; }
+
+  const btn = form.querySelector('button[type="submit"]');
+  try {
+    if (btn) { btn.disabled = true; btn.textContent = 'Сохранение…'; }
+    await api('/api/v1/merchant/offers', { method: 'POST', body: JSON.stringify(payload) });
+    showToast('Оффер сохранён ✓');
+    try { form.reset(); } catch(_) {}
+    activateTab('offers');
+    await loadOffers();
+  } catch (e2) {
+    showInlineError('#offerError', e2?.message || 'Ошибка при сохранении');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Сохранить оффер'; }
+  }
+});
+const ok = gate(); if (!ok) activateTab('auth');
     } catch(e){ console.error(e); const a = document.getElementById('auth'); if (a) { a.classList.add('active'); } }
   });
 })();
