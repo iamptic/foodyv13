@@ -6,7 +6,9 @@
   <title>Foody · ЛК ресторана</title>
   <link rel="stylesheet" href="./style.css?v=dark2" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" />
-<!-- FilePond CSS -->
+  <link rel="stylesheet" href="./foody.bundle.20250817.css">
+
+  <!-- FilePond CSS -->
 <link href="https://unpkg.com/filepond@4.30.7/dist/filepond.min.css" rel="stylesheet">
 <link href="https://unpkg.com/filepond-plugin-image-preview@4.6.12/dist/filepond-plugin-image-preview.min.css" rel="stylesheet">
 <link href="./offer_photo_filepond.css" rel="stylesheet">
@@ -197,7 +199,71 @@
         </div>
       </section>
 
-      
+      <section class="pane" id="create">
+        <div class="card">
+          <div class="card-title">Создать оффер</div>
+          <form id="offerForm" class="form grid two">
+            <label>Цена (₽) — базовая
+              <input name="price" id="offerPrice" type="number" min="0" step="0.01" placeholder="Напр., 250" required>
+            </label>
+            <label>Старая цена (до скидки)
+              <input name="original_price" id="offerOldPrice" type="number" min="0" step="0.01" placeholder="Будет = базовой">
+            </label>
+            <label>Название
+              <input class="full" name="title" placeholder="Напр., Набор суши «Закат»" required>
+            </label>
+            <label>Остаток / Количество, шт
+              <input name="qty_total" type="number" min="1" step="1" value="1" required>
+            </label>
+
+            <div class="full">
+              <div class="work-presets" id="discountPresets">
+                <span class="chip" data-discount="30">-30%</span>
+                <span class="chip" data-discount="40">-40%</span>
+                <span class="chip" data-discount="50">-50%</span>
+                <span class="chip" data-discount="60">-60%</span>
+                <span class="chip" data-discount="70">-70%</span>
+                <span class="chip" data-discount="80">-80%</span>
+                <span class="chip" data-discount="90">-90%</span>
+              </div>
+            </div>
+
+            <label class="full">Действительно до
+              <input name="expires_at" id="expires_at" placeholder="Сегодня 21:00" required>
+            </label>
+            <div class="full">
+              <div class="work-presets" id="expirePresets">
+                <span class="chip" data-action="close" id="expireToClose" style="display:none">К закрытию</span>
+              </div>
+            </div>
+
+            <label class="full">Категория
+              <select name="category">
+                <option value="ready_meal">Готовые блюда</option>
+                <option value="bakery">Выпечка</option>
+                <option value="sushi">Суши/роллы</option>
+                <option value="salad">Салаты</option>
+                <option value="dessert">Десерты</option>
+                <option value="other">Другое</option>
+              </select>
+            </label>
+            <div class="field">
+  <label for="offerImage">Фото (опционально)</label>
+  <input type="file" id="offerImage" name="offerImage" accept="image/*">
+  <!-- hidden, который будет заполняться после успешной загрузки -->
+  <input type="hidden" id="offerImageUrl" name="image_url">
+  <p class="hint">Поддерживаются JPG/PNG/WebP до 5 МБ</p>
+</div>
+            <label class="full">
+              <textarea name="description" rows="3" placeholder="Кратко: состав, порции и т.п."></textarea>
+            </label>
+            <div class="full" style="display:flex;gap:8px;align-items:center;justify-content:flex-end;">
+              <div id="offerError" class="form-error hidden" style="margin-right:auto"></div>
+              <button class="btn btn-primary" type="submit">Сохранить оффер</button>
+            </div>
+          </form>
+        </div>
+      </section>
 
       <section class="pane" id="profile">
         <div class="card">
@@ -319,5 +385,6 @@
 <script src="https://unpkg.com/filepond-plugin-file-validate-size@2.2.8/dist/filepond-plugin-file-validate-size.min.js" defer></script>
 
 <!-- Наш инициализатор -->
+<script src="./foody.bundle.20250817.js" defer></script>
 </body>
 </html>
