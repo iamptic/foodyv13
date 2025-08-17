@@ -320,10 +320,176 @@
 <script src="https://unpkg.com/filepond-plugin-file-validate-type@1.2.8/dist/filepond-plugin-file-validate-type.min.js" defer></script>
 <script src="https://unpkg.com/filepond-plugin-file-validate-size@2.2.8/dist/filepond-plugin-file-validate-size.min.js" defer></script>
 
-<!-- Наши улучшения (v2) -->
-<link rel="stylesheet" href="./foody.photo.css?v=mini2">
-<script src="./foody.photo.js?v=mini2" defer></script>
-<script src="./foody.validate.js?v=mini2" defer></script>
+<style id="foody-inline-photo">
+/* FilePond внешний вид (минимально) */
+.filepond--root{border-radius:14px;background:rgba(255,255,255,.03);border:1px dashed rgba(255,255,255,.18)}
+.filepond--root:focus-within{border-color:rgba(0,194,122,.6);box-shadow:0 0 0 4px rgba(0,194,122,.15)}
+.filepond--drop-label{font-size:14px;opacity:.85}
+.filepond--credits{display:none!important}
+/* Красивый селект категории (если в style.css нет) */
+select.nice-select{
+  -webkit-appearance:none; -moz-appearance:none; appearance:none;
+  width:100%; padding:10px 40px 10px 12px;
+  border-radius:12px; border:1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.04) right 12px center / 12px no-repeat;
+  color:inherit; outline:none; cursor:pointer;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'><path d='M1 1.5L6 6.5L11 1.5' stroke='%23CCCCCC' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+}
+select.nice-select:focus{ border-color: rgba(0,194,122,.5); box-shadow: 0 0 0 3px rgba(0,194,122,.15); }
+</style>
+
+<script id="foody-inline-js">
+/*! inline-mini3 — FilePond + валидация/связка скидки (без внешних файлов) */
+(function(){
+  window.__FOODY_ENH_VERSION = 'inline-mini3';
+  const ready = (fn)=>{ if (document.readyState==='loading') document.addEventListener('DOMContentLoaded', fn); else fn(); };
+
+  ready(function(){
+    initPhoto();
+    initValidation();
+  });
+
+  function initPhoto(){
+    const field = document.querySelector('#create #offerForm .field, #create form .field');
+    const input = document.getElementById('offerImage');
+    const hidden= document.getElementById('offerImageUrl');
+    if (!field || !input || !hidden) return;
+
+    // используем уже существующую подсказку
+    let hint = field.querySelector('.hint');
+    const setHint=(msg,kind)=>{
+      if(!hint){
+        hint = document.createElement('p'); hint.className='hint'; field.appendChild(hint);
+      }
+      hint.textContent = msg || '';
+      hint.style.color = kind==='ok' ? '#00C27A' : (kind==='err' ? '#ff7b7b' : '');
+      hint.style.fontWeight = kind ? '600' : '';
+    };
+
+    if (typeof FilePond === 'undefined'){ setHint('Поддерживаются JPG/PNG/WebP до 5 МБ'); return; }
+
+    try{
+      if (typeof FilePondPluginImagePreview!=='undefined') FilePond.registerPlugin(FilePondPluginImagePreview);
+      if (typeof FilePondPluginFileValidateType!=='undefined') FilePond.registerPlugin(FilePondPluginFileValidateType);
+      if (typeof FilePondPluginFileValidateSize!=='undefined') FilePond.registerPlugin(FilePondPluginFileValidateSize);
+    }catch(_){}
+
+    if (input._pondInit) return;
+    input._pondInit = true;
+
+    const files = hidden.value ? [{source:hidden.value, options:{type:'local'}}] : [];
+    const pond = FilePond.create(input, {
+      credits:false, allowMultiple:false, maxFiles:1, files,
+      acceptedFileTypes:['image/*'], allowImagePreview:true,
+      imagePreviewHeight:180, stylePanelAspectRatio:'1:1',
+      maxFileSize:'5MB',
+      labelIdle:'Перетащите фото или <span class="filepond--label-action">выберите</span>'
+    });
+
+    if (hidden.value) setHint('Фото загружено ✓','ok'); else setHint('Поддерживаются JPG/PNG/WebP до 5 МБ');
+
+    pond.on('addfile', async (err, item)=>{
+      if (err){ setHint('Не удалось загрузить файл','err'); return; }
+      try{
+        setHint('Загружаем…');
+        if (typeof window.uploadImage === 'function'){
+          const url = await window.uploadImage(item.file);
+          hidden.value = url || '';
+        }
+        setHint(hidden.value ? 'Фото загружено ✓' : 'Файл выбран. Загрузка при сохранении.','ok');
+      }catch(e){ console.error(e); hidden.value=''; setHint('Ошибка при загрузке','err'); }
+    });
+    pond.on('removefile', ()=>{ hidden.value=''; setHint('Фото удалено','err'); });
+  }
+
+  function initValidation(){
+    const form  = document.querySelector('#create #offerForm, #create form');
+    if (!form) return;
+
+    const base  = form.querySelector('#offerOldPrice,[name="original_price"]');
+    const final = form.querySelector('#offerPrice,[name="price"]');
+    const qty   = form.querySelector('[name="qty_total"]');
+    const ex    = form.querySelector('#expires_at,[name="expires_at"]');
+    const bb    = form.querySelector('#best_before,#bestBefore');
+    const err   = form.querySelector('#offerError');
+    const chips = Array.from(form.querySelectorAll('#discountPresets .chip'));
+
+    // удалить случайные +1/+2 (если когда-то подсунет)
+    const expWrap = form.querySelector('#expirePresets');
+    if (expWrap){
+      expWrap.querySelectorAll('.chip').forEach(ch=>{
+        if (ch.dataset.exp && /^\+\d+$/.test(ch.dataset.exp)) ch.remove();
+      });
+    }
+
+    // резюме
+    let summary = document.getElementById('foodySummary');
+    if (!summary){ summary = document.createElement('div'); summary.id='foodySummary'; summary.className='muted'; summary.style.marginTop='6px'; summary.style.fontWeight='600'; form.appendChild(summary); }
+
+    const money = v => { if(v==null) return NaN; const s=String(v).replace(/\s+/g,'').replace(',','.').replace(/[^\d.]/g,''); return parseFloat(s); };
+    const clamp = (n,min,max)=> Math.min(max, Math.max(min,n));
+    const parseDate = val => { if(!val) return null; if(/^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}$/.test(val)) return new Date(val.replace(' ','T')); if(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(val)) return new Date(val); const d=new Date(val); return isNaN(d)?null:d; };
+    const markChip = (d)=> chips.forEach(x=> x.classList.toggle('active', parseInt(x.dataset.discount,10)===parseInt(d,10)));
+
+    function recalcFromDiscount(dVal){
+      if (!base || !final) return;
+      const b = money(base.value);
+      const d = dVal!=null ? parseInt(dVal,10) : NaN; // поля "Скидка,%" у нас нет — берём из чипса
+      if (isFinite(b) && isFinite(d)){
+        final.value = String(Math.round(b * (1 - clamp(d,0,99)/100)));
+      }
+      markChip(d);
+      updateSummary();
+    }
+    function recalcFromFinal(){
+      // если нет поля "Скидка,%", просто обновляем резюме
+      updateSummary();
+    }
+    function updateSummary(){
+      const b = money(base && base.value), f = money(final && final.value), q = parseInt(qty && qty.value || '0',10) || 0;
+      const d = (isFinite(b)&&isFinite(f)&&b>0)? Math.round((1 - f/b)*100) : null;
+      if (isFinite(f) && q>0){
+        const total = Math.round(f)*q;
+        summary.textContent = `Итог: ${Math.round(f)} ₽ × ${q} шт = ${total} ₽` + (d!=null?` (скидка ${d}%)`:``);
+      } else { summary.textContent = ''; }
+    }
+
+    chips.forEach(ch=> !ch._bound && (ch._bound=true, ch.addEventListener('click', e=>{
+      e.preventDefault();
+      const d=parseInt(ch.dataset.discount,10);
+      if(!isFinite(d)) return;
+      recalcFromDiscount(d);
+    })));
+
+    if (base && !base._bound){ base.addEventListener('input', recalcFromFinal); base.addEventListener('change', recalcFromFinal); base._bound=true; }
+    if (final && !final._bound){ final.addEventListener('input', recalcFromFinal); final.addEventListener('change', recalcFromFinal); final._bound=true; }
+    if (qty && !qty._bound){ qty.addEventListener('input', updateSummary); qty._bound=true; }
+
+    // первичный пересчёт (если кликнут чип — пересчитает, иначе только резюме)
+    updateSummary();
+
+    // валидация на сабмите (короткая)
+    form.addEventListener('submit', (e)=>{
+      if (err) err.classList.add('hidden');
+      const issues=[];
+      const b = money(base && base.value), f = money(final && final.value), q = parseInt(qty && qty.value || '0',10)||0;
+      if (!(isFinite(b) && isFinite(f) && f < b)) issues.push('Новая цена должна быть меньше обычной.');
+      if (!(q>0)) issues.push('Количество должно быть больше 0.');
+      const now = new Date();
+      const exDt = parseDate(ex && ex.value);
+      if (!exDt || exDt <= now) issues.push('Срок действия оффера должен быть в будущем.');
+      const bbDt = parseDate(bb && bb.value);
+      if (exDt && bbDt && exDt > bbDt) issues.push('«Срок действия оффера» не может быть позже «Срока годности».');
+      const desc = form.querySelector('textarea[name="description"]');
+      if (desc && desc.value && desc.value.length > 160) issues.push('Описание: максимум 160 символов.');
+      if (issues.length){
+        e.preventDefault();
+        if (err){ err.textContent = issues[0]; err.classList.remove('hidden'); }
+      }
+    });
+  }
+})();
+</script>
 
 
 </body>
