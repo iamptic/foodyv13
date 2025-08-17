@@ -353,49 +353,22 @@ class OfferCreate(BaseModel):
 
 @app.post("/api/v1/merchant/offers")
 async def create_offer(payload: OfferCreate, request: Request):
-
-    # --- Foody patch 2025-08-17: coalesce image_url and handle price fields ---
-    try:
-        _img_from_payload = payload.image_url
-    except Exception:
-        _img_from_payload = None
-    img = (_img_from_payload or "").strip()
-    # normalize price/original_price -> float or None
-    def _to_float(v):
-        try:
-            if v is None:
-                return None
-            if isinstance(v, (int, float)):
-                return float(v)
-            s = str(v).replace(',', '.').strip()
-            return float(s) if s else None
-        except Exception:
-            return None
-    price_f = _to_float(getattr(payload, 'price', None))
-    orig_f  = _to_float(getattr(payload, 'original_price', None))
-    price_cents = int(round(price_f * 100)) if price_f is not None else None
-    original_price_cents = int(round(orig_f * 100)) if orig_f is not None else None
-    
-    # merchant/restaurant id normalization
-    rid = None
-    try:
-        rid = int(getattr(payload, 'merchant_id', None) or getattr(payload, 'restaurant_id', None))
-    except Exception:
-        rid = None
-    if rid is None:
-        # try read from query param (restaurant_id) if handler has 'request'
-        try:
-            rid = int(request.query_params.get('restaurant_id'))
-        except Exception:
-            pass
-        api_key = _get_api_key(request)
+    """
+    Safe insert for offers: writes both merchant_id and restaurant_id,
+    coalesces image_url to non-null string, supports price/price_cents schemas.
+    """
+    api_key = _get_api_key(request)
     async with _pool.acquire() as conn:
-        # авторизуем по merchant_id или restaurant_id
+        # authorize by merchant_id or restaurant_id
         rid = int(payload.merchant_id or payload.restaurant_id)
         await _require_auth(conn, rid, api_key)
 
-        price_cents = int(round((payload.price or 0) * 100))
-        original_cents = int(round((payload.original_price or 0) * 100)) if payload.original_price is not None else None
+        # numbers
+        price_val = float(payload.price or 0)
+        original_val = float(payload.original_price) if payload.original_price is not None else None
+        price_cents = int(round(price_val * 100)) if payload.price is not None else None
+        orig_cents  = int(round(original_val * 100)) if original_val is not None else None
+
         qty_total = payload.qty_total or 1
         qty_left = payload.qty_left if payload.qty_left is not None else qty_total
 
@@ -403,93 +376,92 @@ async def create_offer(payload: OfferCreate, request: Request):
         if not expires:
             raise HTTPException(status_code=400, detail="invalid expires_at")
 
-        # пишем merchant_id И restaurant_id (оба = rid)
-        
-# Foody patch: schema-flexible insert (supports price/price_cents columns)
-_params = {
-    "merchant_id": rid,
-    "restaurant_id": rid,
-    "title": payload.title,
-    "price": price_f,
-    "price_cents": price_cents,
-    "original_price": orig_f,
-    "original_price_cents": original_price_cents,
-    "qty_total": getattr(payload, 'qty_total', 1) or 1,
-    "qty_left": getattr(payload, 'qty_left', None) or (getattr(payload, 'qty_total', 1) or 1),
-    "expires_at": getattr(payload, 'expires_at', None),
-    "image_url": img,
-    "category": getattr(payload, 'category', None),
-    "description": getattr(payload, 'description', None),
-}
-# ensure ISO datetime string or proper timestamp
-expires_val = _params["expires_at"]
-if isinstance(expires_val, str):
-    expires_db = expires_val
-else:
-    try:
-        from datetime import datetime, timezone
-        expires_db = expires_val.astimezone(timezone.utc).isoformat()
-    except Exception:
-        expires_db = None
-if not expires_db:
-    raise HTTPException(status_code=400, detail="invalid expires_at")
-# Attempt 1: wide schema (both cents and float columns)
-try:
-    row = await conn.fetchrow(
-        """
-        INSERT INTO offers (
-            merchant_id, restaurant_id, title,
-            price, price_cents, original_price, original_price_cents,
-            qty_total, qty_left, expires_at,
-            image_url, category, description
-        )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-        RETURNING id
-        """,
-        _params["merchant_id"], _params["restaurant_id"], _params["title"],
-        _params["price"], _params["price_cents"], _params["original_price"], _params["original_price_cents"],
-        _params["qty_total"], _params["qty_left"], expires_db,
-        _params["image_url"], _params["category"], _params["description"]
-    )
-except Exception as e1:
-    # Attempt 2: cents-only schema
-    try:
-        row = await conn.fetchrow(
-            """
-            INSERT INTO offers (
-                merchant_id, restaurant_id, title,
-                price_cents, original_price_cents,
-                qty_total, qty_left, expires_at,
-                image_url, category, description
+        # image url must not be NULL for strict schemas
+        image_url = (payload.image_url or "").strip()
+
+        # Attempt 1: wide schema (float + cents)
+        try:
+            row = await conn.fetchrow(
+                """
+                INSERT INTO offers (
+                    merchant_id,
+                    restaurant_id,
+                    title,
+                    price,
+                    price_cents,
+                    original_price,
+                    original_price_cents,
+                    qty_total,
+                    qty_left,
+                    expires_at,
+                    image_url,
+                    category,
+                    description
+                )
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+                RETURNING id
+                """,
+                rid, rid, payload.title,
+                price_val if payload.price is not None else None,
+                price_cents,
+                original_val,
+                orig_cents,
+                qty_total, qty_left, expires,
+                image_url, payload.category, payload.description
             )
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-            RETURNING id
-            """,
-            _params["merchant_id"], _params["restaurant_id"], _params["title"],
-            _params["price_cents"], _params["original_price_cents"],
-            _params["qty_total"], _params["qty_left"], expires_db,
-            _params["image_url"], _params["category"], _params["description"]
-        )
-    except Exception as e2:
-        # Attempt 3: float-only schema
-        row = await conn.fetchrow(
-            """
-            INSERT INTO offers (
-                merchant_id, restaurant_id, title,
-                price, original_price,
-                qty_total, qty_left, expires_at,
-                image_url, category, description
-            )
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-            RETURNING id
-            """,
-            _params["merchant_id"], _params["restaurant_id"], _params["title"],
-            _params["price"], _params["original_price"],
-            _params["qty_total"], _params["qty_left"], expires_db,
-            _params["image_url"], _params["category"], _params["description"]
-        )
-return {"id": row["id"]}
-return {"id": row["id"]}
+        except Exception:
+            # Attempt 2: cents-only schema
+            try:
+                row = await conn.fetchrow(
+                    """
+                    INSERT INTO offers (
+                        merchant_id,
+                        restaurant_id,
+                        title,
+                        price_cents,
+                        original_price_cents,
+                        qty_total,
+                        qty_left,
+                        expires_at,
+                        image_url,
+                        category,
+                        description
+                    )
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+                    RETURNING id
+                    """,
+                    rid, rid, payload.title,
+                    price_cents, orig_cents,
+                    qty_total, qty_left, expires,
+                    image_url, payload.category, payload.description
+                )
+            except Exception:
+                # Attempt 3: float-only schema
+                row = await conn.fetchrow(
+                    """
+                    INSERT INTO offers (
+                        merchant_id,
+                        restaurant_id,
+                        title,
+                        price,
+                        original_price,
+                        qty_total,
+                        qty_left,
+                        expires_at,
+                        image_url,
+                        category,
+                        description
+                    )
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+                    RETURNING id
+                    """,
+                    rid, rid, payload.title,
+                    price_val if payload.price is not None else None,
+                    original_val,
+                    qty_total, qty_left, expires,
+                    image_url, payload.category, payload.description
+                )
+        return {"id": row["id"]}
 
 @app.get("/")
 async def root():
