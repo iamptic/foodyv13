@@ -139,7 +139,7 @@
 
       <!-- Срок годности продукта (контрольное поле) -->
       <label class="full">Срок годности продукта
-        <input name="best_before" id="best_before" type="datetime-local" placeholder="до какого времени продукт ок">
+        <input name="best_before" id="best_before" type="datetime-local">
         <div class="muted small">Будет сохранено и учитываться при проверках.</div>
       </label>
 
@@ -155,7 +155,7 @@
 
       <!-- Категория -->
       <label class="full">Категория
-        <select name="category">
+        <select class="nice-select" name="category">
           <option value="ready_meal">Готовые блюда</option>
           <option value="bakery">Выпечка</option>
           <option value="sushi">Суши/роллы</option>
