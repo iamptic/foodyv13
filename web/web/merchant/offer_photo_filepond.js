@@ -1,78 +1,53 @@
 
-/*! Foody — Offer Photo (FilePond) Init — 2025-08-17 */
+/*! Foody Offer Photo — FilePond init (1:1 crop, preview, auto-upload) */
 (function(){
-  const onReady = (fn)=>{
-    if (document.readyState === 'complete' || document.readyState === 'interactive') setTimeout(fn, 0);
-    else document.addEventListener('DOMContentLoaded', fn);
-  };
-
+  const onReady=(fn)=>{ if(document.readyState==='complete'||document.readyState==='interactive') setTimeout(fn,0); else document.addEventListener('DOMContentLoaded',fn); };
   onReady(()=>{
-    // ensure FilePond exists
+    var input = document.getElementById('offerImage');
+    var hidden = document.getElementById('offerImageUrl');
+    if (!input || !hidden) return;
+
     if (typeof FilePond === 'undefined') return;
-
-    // Register plugins if present
     try {
-      if (window.FilePondPluginImagePreview) FilePond.registerPlugin(window.FilePondPluginImagePreview);
-      if (window.FilePondPluginFileValidateType) FilePond.registerPlugin(window.FilePondPluginFileValidateType);
-      if (window.FilePondPluginFileValidateSize) FilePond.registerPlugin(window.FilePondPluginFileValidateSize);
-    } catch (e) { console.warn('filepond plugins', e); }
+      if (window.FilePondPluginImagePreview) FilePond.registerPlugin(FilePondPluginImagePreview);
+      if (window.FilePondPluginFileValidateType) FilePond.registerPlugin(FilePondPluginFileValidateType);
+      if (window.FilePondPluginFileValidateSize) FilePond.registerPlugin(FilePondPluginFileValidateSize);
+      if (window.FilePondPluginImageCrop) FilePond.registerPlugin(FilePondPluginImageCrop);
+    } catch(_) {}
 
-    const input = document.getElementById('offerImage');
-    const hiddenUrl = document.getElementById('offerImageUrl');
-    if (!input || !hiddenUrl) return; // нет поля — выходим тихо
-
-    // Build API base
-    const api = (window.foodyApi || (window.__FOODY__ && window.__FOODY__.FOODY_API) || '').replace(/\/+$/, '');
-    const token = (localStorage.getItem('merchant_token') || localStorage.getItem('token') || '').trim();
-
-    const pond = FilePond.create(input, {
+    var files = hidden.value ? [{source:hidden.value, options:{type:'local'}}] : [];
+    var pond = FilePond.create(input, {
       credits: false,
+      files: files,
       allowMultiple: false,
       maxFiles: 1,
       acceptedFileTypes: ['image/*'],
       maxFileSize: '5MB',
+      allowImagePreview: true,
+      imagePreviewHeight: 180,
+      stylePanelAspectRatio: '1:1',
+      imageCropAspectRatio: '1:1',
       labelIdle: 'Перетащите фото или <span class="filepond--label-action">выберите</span>',
-      imagePreviewHeight: 160,
-      stylePanelAspectRatio: '16:9',
     });
 
-    // Upload handler
-    async function uploadFile(file){
-      if (!api) throw new Error('FOODY_API is empty');
-      const fd = new FormData();
-      fd.append('file', file);
-      const headers = {}; // добавим auth, если есть
-      if (token) headers['Authorization'] = 'Bearer ' + token;
-
-      const resp = await fetch(api + '/upload', { method:'POST', body: fd, headers });
-      if (!resp.ok) throw new Error('Upload failed: ' + resp.status);
-      const data = await resp.json().catch(()=> ({}));
-      // пробуем вытащить url из разных полей
-      const url = data.url || data.location || (data.file && data.file.url) || (data.result && data.result.url);
-      if (!url) throw new Error('No URL in response');
-      return url;
-    }
-
-    // When file added -> upload immediately
-    pond.on('addfile', async (error, item) => {
-      if (error) return;
+    async function upload(file){
       try {
-        // show "processing" state
-        pond.setOptions({ labelFileProcessing: 'Загрузка…' });
-        const url = await uploadFile(item.file);
-        hiddenUrl.value = url;
-        pond.setOptions({ labelFileProcessingComplete: 'Загружено' });
-      } catch (e) {
-        console.warn('offer image upload error', e);
-        hiddenUrl.value = ''; // fallback
-        // Optional: show toast/alert
-        try { alert('Не удалось загрузить фото. Можно указать ссылку вручную.'); } catch(_){}
-        // remove the file to avoid confusion
-        try { pond.removeFile(item.id); } catch(_){}
+        var base = (window.__FOODY__ && window.__FOODY__.FOODY_API) || window.foodyApi || '';
+        if (!base) throw new Error('FOODY_API missing');
+        var fd = new FormData();
+        fd.append('file', file);
+        var r = await fetch(base.replace(/\/+$/,'') + '/upload', { method:'POST', body: fd });
+        if (!r.ok) throw new Error('Upload failed ' + r.status);
+        var j = await r.json();
+        hidden.value = (j && (j.url || j.Location || j.location)) || '';
+      } catch (e){
+        console.warn('offer image upload failed', e);
+        hidden.value = '';
+        try { pond.removeFile(); } catch(_){}
+        try { alert('Не удалось загрузить фото.'); } catch(_){}
       }
-    });
-
-    // If cleared -> drop hidden
-    pond.on('removefile', () => { if (hiddenUrl) hiddenUrl.value = ''; });
+    }
+    pond.on('addfile', function(err, item){ if(!err && item && item.file) upload(item.file); });
+    pond.on('removefile', function(){ hidden.value=''; });
   });
 })();
