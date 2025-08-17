@@ -1,7 +1,4 @@
-
-/* Foody Bundle CSS — 2025-08-17 fix2 */
-
-/* Pane visibility + auth/profiles adjustments kept */
+/* Foody Bundle CSS — 2025-08-17 fix5 (same as fix4 for styles) */
 .pane{display:none!important}
 .pane.active{display:block!important}
 section#auth .card :is(.card-title,.title,h1,h2,h3){width:100%!important;display:flex!important;justify-content:center!important;text-align:center!important;margin:8px 0 16px!important;}
@@ -9,15 +6,11 @@ section#auth .card :is(.card-title,.title,h1,h2,h3){width:100%!important;display
 #profile .card form .full:last-child,
 #profileForm .full:last-child,
 #pwForm > div:last-child{display:flex;gap:8px;align-items:center;justify-content:flex-end}
-
-/* Create Offer: summary + sticky footer */
 .foody-summary{margin-top:10px;font-weight:600;font-size:14px}
 .form-footer.sticky{position:sticky;bottom:0;display:flex;gap:8px;background:linear-gradient(to top,rgba(0,0,0,.6),rgba(0,0,0,0));padding-top:8px;padding-bottom:4px}
 #discountPresets .chip.active{background:rgba(0,194,122,.2);border-color:rgba(0,194,122,.35)}
 #expirePresets .chip.active{background:rgba(0,194,122,.2);border-color:rgba(0,194,122,.35)}
 @media (max-width:520px){.form-footer.sticky .btn{width:100%}}
-
-/* Nice select for category */
 select.nice-select{
   -webkit-appearance:none; -moz-appearance:none; appearance:none;
   width:100%; padding:10px 40px 10px 12px;
@@ -27,14 +20,5 @@ select.nice-select{
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'><path d='M1 1.5L6 6.5L11 1.5' stroke='%23CCCCCC' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>");
 }
 select.nice-select:focus{ border-color: rgba(0,194,122,.5); box-shadow: 0 0 0 3px rgba(0,194,122,.15); }
-option{ color: #111; } /* для выпадающего списка в светлой теме системных меню */
-
-/* FilePond polish (like new.html) */
-.filepond--root{border-radius:12px;background:rgba(255,255,255,0.02);border:1px dashed rgba(255,255,255,0.18)}
-.filepond--panel-root{border-radius:12px}
-.filepond--item-panel{background:rgba(255,255,255,0.06)}
-.filepond--drop-label{color:#ccc}
-@media (prefers-color-scheme:light){
-  .filepond--root{background:rgba(0,0,0,0.02);border-color:rgba(0,0,0,0.15)}
-  .filepond--drop-label{color:#555}
-}
+.foody-hint{margin-top:6px;font-size:12px;opacity:.8}
+.foody-hint a{color:#00C27A;text-decoration:underline;cursor:pointer}
