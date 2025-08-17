@@ -1,322 +1,489 @@
-
 import os
-import uuid
-import asyncio
-import mimetypes
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional, Set
 
 import asyncpg
-from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Depends, Query
+from fastapi import FastAPI, HTTPException, Body, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+from datetime import datetime, timezone, time as dtime
+import hashlib
+import secrets as _secrets
 
-# ---------- Settings ----------
-DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
-    raise RuntimeError("DATABASE_URL env variable is required")
+APP_NAME = "Foody API"
 
-CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "*").split(",") if o.strip()]
-UPLOAD_DIR = os.getenv("UPLOAD_DIR", "./uploads")
+DATABASE_URL = os.getenv("DATABASE_URL") or "postgresql://postgres:postgres@localhost:5432/postgres"
+RUN_MIGRATIONS = os.getenv("RUN_MIGRATIONS", "1") == "1"
 
-app = FastAPI(title="Foody Backend")
+CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()] or [
+    "https://foodyweb-production.up.railway.app",
+    "https://foodybot-production.up.railway.app",
+]
 
+RECOVERY_SECRET = os.getenv("RECOVERY_SECRET", "foodyDevRecover123")
+
+app = FastAPI(title=APP_NAME, version="1.0")
+
+# CORS before routes
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=CORS_ORIGINS if CORS_ORIGINS != ["*"] else ["*"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
-# Ensure uploads dir exists & mount static
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-app.mount("/u", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+_pool: Optional[asyncpg.Pool] = None
 
-pool: asyncpg.Pool
+async def _connect_pool():
+    global _pool
+    if _pool is None:
+        _pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=10)
 
-# ---------- Helpers ----------
-async def get_pool() -> asyncpg.Pool:
-    return pool
+async def _close_pool():
+    global _pool
+    if _pool is not None:
+        await _pool.close()
+        _pool = None
 
-async def fetch_columns(conn: asyncpg.Connection, table: str) -> Dict[str, Dict[str, Any]]:
-    # Return mapping: column -> {'is_nullable': bool, 'data_type': str}
-    rows = await conn.fetch(
-        """
-        SELECT column_name, is_nullable, data_type
-        FROM information_schema.columns
-        WHERE table_schema = 'public' AND table_name = $1
-        """,
-        table,
-    )
-    info = {}
-    for r in rows:
-        info[r["column_name"]] = {
-            "is_nullable": (r["is_nullable"] == "YES"),
-            "data_type": r["data_type"],
-        }
-    return info
+async def _migrate():
+    if not RUN_MIGRATIONS:
+        return
+    async with _pool.acquire() as conn:
+        # merchants
+        await conn.execute("""
+        CREATE TABLE IF NOT EXISTS merchants (
+            id SERIAL PRIMARY KEY,
+            name TEXT,
+            login TEXT UNIQUE,
+            auth_login TEXT,
+            password_hash TEXT,
+            api_key TEXT UNIQUE,
+            phone TEXT,
+            email TEXT,
+            address TEXT,
+            city TEXT,
+            lat DOUBLE PRECISION,
+            lng DOUBLE PRECISION,
+            open_time TIME,
+            close_time TIME,
+            created_at TIMESTAMPTZ DEFAULT now()
+        );
+        """)
+        # add missing columns if table existed
+        for ddl in [
+            "ALTER TABLE merchants ADD COLUMN IF NOT EXISTS login TEXT;",
+            "ALTER TABLE merchants ADD COLUMN IF NOT EXISTS auth_login TEXT;",
+            "ALTER TABLE merchants ADD COLUMN IF NOT EXISTS open_time TIME;",
+            "ALTER TABLE merchants ADD COLUMN IF NOT EXISTS close_time TIME;",
+        ]:
+            await conn.execute(ddl)
 
-def now_utc() -> datetime:
-    return datetime.now(timezone.utc)
+        # backfill login
+        await conn.execute("""
+        UPDATE merchants
+           SET login = COALESCE(NULLIF(login,''), NULLIF(auth_login,''), NULLIF(phone,''), email)
+         WHERE login IS NULL OR login = '';
+        """)
+        await conn.execute("""
+        UPDATE merchants
+           SET auth_login = COALESCE(NULLIF(auth_login,''), login)
+         WHERE auth_login IS NULL OR auth_login = '';
+        """)
+        await conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS merchants_login_unique ON merchants(login);")
 
-async def require_key(conn: asyncpg.Connection, request: Request) -> int:
-    key = request.headers.get("X-Foody-Key")
-    if not key:
-        raise HTTPException(status_code=401, detail="X-Foody-Key header is required")
-    row = await conn.fetchrow("SELECT id FROM merchants WHERE api_key = $1", key)
+        # offers
+        await conn.execute("""
+        CREATE TABLE IF NOT EXISTS offers (
+            id SERIAL PRIMARY KEY,
+            merchant_id INTEGER,               -- добавлено
+            restaurant_id INTEGER,
+            title TEXT NOT NULL,
+            price_cents INTEGER NOT NULL DEFAULT 0,
+            original_price_cents INTEGER,
+            qty_total INTEGER NOT NULL DEFAULT 1,
+            qty_left INTEGER NOT NULL DEFAULT 1,
+            expires_at TIMESTAMPTZ,
+            image_url TEXT,
+            category TEXT,
+            description TEXT,
+            created_at TIMESTAMPTZ DEFAULT now()
+        );
+        """)
+
+        # ensure columns exist and backfill
+        cols = await conn.fetch("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name='offers' AND table_schema=current_schema()
+        """)
+        colset: Set[str] = {r["column_name"] for r in cols}
+
+        if "merchant_id" not in colset:
+            await conn.execute("ALTER TABLE offers ADD COLUMN IF NOT EXISTS merchant_id INTEGER;")
+            colset.add("merchant_id")
+
+        if "restaurant_id" not in colset:
+            await conn.execute("ALTER TABLE offers ADD COLUMN IF NOT EXISTS restaurant_id INTEGER;")
+            colset.add("restaurant_id")
+
+        if "created_at" not in colset:
+            await conn.execute("ALTER TABLE offers ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();")
+
+        # backfill (на всякий случай для уже существующих строк)
+        await conn.execute("UPDATE offers SET restaurant_id = COALESCE(restaurant_id, merchant_id) WHERE restaurant_id IS NULL;")
+        await conn.execute("UPDATE offers SET merchant_id   = COALESCE(merchant_id, restaurant_id) WHERE merchant_id IS NULL;")
+
+def _hash_password(pw: str) -> str:
+    salt = hashlib.sha256(RECOVERY_SECRET.encode()).hexdigest()[:16]
+    return hashlib.sha256((salt + pw).encode()).hexdigest()
+
+def _generate_api_key() -> str:
+    return _secrets.token_hex(24)
+
+def _to_time_str(val: Any) -> Optional[str]:
+    if val is None:
+        return None
+    if isinstance(val, str):
+        return val[:5]
+    try:
+        return val.strftime("%H:%M")
+    except Exception:
+        return None
+
+def _parse_time(val: Any) -> Optional[dtime]:
+    if not val:
+        return None
+    if isinstance(val, dtime):
+        return val
+    if isinstance(val, str):
+        s = val.strip()
+        if not s:
+            return None
+        parts = s.split(":")
+        try:
+            h = int(parts[0])
+            m = int(parts[1]) if len(parts) > 1 else 0
+            s = int(parts[2]) if len(parts) > 2 else 0
+            if h == 24 and m == 0 and s == 0:
+                return dtime(23, 59, 59)
+            return dtime(h, m, s)
+        except Exception:
+            return None
+    return None
+
+def _parse_expires_at(s: str) -> Optional[datetime]:
+    if not s:
+        return None
+    try:
+        if s.endswith("Z"):
+            return datetime.fromisoformat(s.replace("Z","+00:00"))
+        return datetime.fromisoformat(s).replace(tzinfo=timezone.utc)
+    except Exception:
+        return None
+
+async def _require_auth(conn: asyncpg.Connection, restaurant_id: int, api_key: str):
+    if not api_key:
+        raise HTTPException(status_code=401, detail="missing api key")
+    row = await conn.fetchrow("SELECT id FROM merchants WHERE id=$1 AND api_key=$2", restaurant_id, api_key)
     if not row:
-        raise HTTPException(status_code=403, detail="Invalid API key")
-    return int(row["id"])
+        raise HTTPException(status_code=401, detail="invalid api key")
 
-def to_cents(value: Optional[float], fallback: Optional[int] = None) -> Optional[int]:
-    if value is None:
-        return fallback
-    try:
-        return int(round(float(value) * 100))
-    except Exception:
-        return fallback
+def _get_api_key(req: Request) -> str:
+    return req.headers.get("X-Foody-Key") or req.headers.get("x-foody-key") or ""
 
-def from_cents(value: Optional[int]) -> Optional[float]:
-    if value is None:
-        return None
-    try:
-        return round(float(value) / 100.0, 2)
-    except Exception:
-        return None
+class RegisterRequest(BaseModel):
+    name: str
+    login: str
+    password: str
+    city: Optional[str] = None
 
-def row_to_dict(row: asyncpg.Record) -> Dict[str, Any]:
-    d = dict(row)
-    # normalize money fields if present
-    if "price_cents" in d and d["price_cents"] is not None:
-        d["price"] = from_cents(d["price_cents"])
-    if "original_price_cents" in d and d["original_price_cents"] is not None:
-        d["original_price"] = from_cents(d["original_price_cents"])
-    # ISO datetimes
-    if isinstance(d.get("expires_at"), datetime):
-        d["expires_at"] = d["expires_at"].isoformat()
-    if isinstance(d.get("created_at"), datetime):
-        d["created_at"] = d["created_at"].isoformat()
-    return d
+class LoginRequest(BaseModel):
+    login: str
+    password: str
 
-# ---------- Startup / Shutdown ----------
+# (оставил для совместимости, но расширил)
+class OfferCreate(BaseModel):
+    merchant_id: Optional[int] = None
+    restaurant_id: int
+    title: str
+    price: float
+    original_price: Optional[float] = None
+    qty_total: int = 1
+    qty_left: Optional[int] = None
+    expires_at: str
+    image_url: Optional[str] = None
+    category: Optional[str] = None
+    description: Optional[str] = None
+
 @app.on_event("startup")
-async def on_startup():
-    global pool
-    pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=10)
+async def startup_event():
+    await _connect_pool()
+    await _migrate()
 
 @app.on_event("shutdown")
-async def on_shutdown():
-    await pool.close()
+async def shutdown_event():
+    await _close_pool()
 
-# ---------- Health ----------
 @app.get("/health")
 async def health():
-    return {"ok": True, "ts": now_utc().isoformat()}
+    return {"ok": True, "service": APP_NAME}
 
-# ---------- Upload ----------
-@app.post("/upload")
-async def upload_file(request: Request, file: UploadFile = File(...)):
-    # basic extension validation
-    content_type = file.content_type or mimetypes.guess_type(file.filename)[0] or ""
-    if not content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="Only image uploads are allowed")
-    ext = os.path.splitext(file.filename or "")[1].lower()
-    if ext not in [".jpg", ".jpeg", ".png", ".webp", ".gif"]:
-        ext = ".jpg"
-    name = f"{uuid.uuid4().hex}{ext}"
-    dest = os.path.join(UPLOAD_DIR, name)
-    data = await file.read()
-    if len(data) > 7 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="File too large (max 7MB)")
-    with open(dest, "wb") as f:
-        f.write(data)
-    base = str(request.base_url).rstrip("/")
-    return {"url": f"{base}/u/{name}"}
+@app.post("/api/v1/merchant/register_public")
+async def register_public(payload: RegisterRequest):
+    async with _pool.acquire() as conn:
+        login_digits = "".join([c for c in payload.login if c.isdigit()])
+        exists = await conn.fetchrow("SELECT id FROM merchants WHERE login=$1", login_digits)
+        if exists:
+            raise HTTPException(status_code=409, detail="merchant with this login already exists")
+        api_key = _generate_api_key()
+        password_hash = _hash_password(payload.password)
+        row = await conn.fetchrow(
+            """
+            INSERT INTO merchants (name, login, phone, city, password_hash, api_key, auth_login)
+            VALUES ($1,$2,$3,$4,$5,$6,$7)
+            RETURNING id
+            """,
+            payload.name.strip(), login_digits, login_digits, payload.city, password_hash, api_key, login_digits
+        )
+        return {"restaurant_id": row["id"], "api_key": api_key}
 
-# ---------- Offers API ----------
+@app.post("/api/v1/merchant/login")
+async def login(payload: LoginRequest):
+    async with _pool.acquire() as conn:
+        login_digits = "".join([c for c in payload.login if c.isdigit()])
+        row = await conn.fetchrow("SELECT id, password_hash, api_key FROM merchants WHERE login=$1", login_digits)
+        if not row or row["password_hash"] != _hash_password(payload.password):
+            raise HTTPException(status_code=401, detail="invalid login or password")
+        return {"restaurant_id": row["id"], "api_key": row["api_key"]}
+
+@app.get("/api/v1/merchant/profile")
+async def get_profile(restaurant_id: int, request: Request):
+    api_key = _get_api_key(request)
+    async with _pool.acquire() as conn:
+        await _require_auth(conn, restaurant_id, api_key)
+        row = await conn.fetchrow(
+            "SELECT id, name, login, phone, email, address, city, lat, lng, open_time, close_time FROM merchants WHERE id=$1",
+            restaurant_id
+        )
+        if not row:
+            raise HTTPException(status_code=404, detail="not found")
+        d = dict(row)
+        d["open_time"] = _to_time_str(d.get("open_time"))
+        d["close_time"] = _to_time_str(d.get("close_time"))
+        d["work_from"] = d["open_time"]
+        d["work_to"] = d["close_time"]
+        return d
+
+@app.put("/api/v1/merchant/profile")
+async def update_profile(payload: Dict[str, Any] = Body(...), request: Request = None):
+    restaurant_id = int(payload.get("restaurant_id") or 0)
+    if not restaurant_id:
+        raise HTTPException(status_code=400, detail="restaurant_id required")
+
+    api_key = _get_api_key(request) if request else ""
+
+    async with _pool.acquire() as conn:
+        await _require_auth(conn, restaurant_id, api_key)
+
+        name    = (payload.get("name") or "").strip() or None
+        phone   = (payload.get("phone") or "").strip() or None
+        address = (payload.get("address") or "").strip() or None
+        city    = (payload.get("city") or "").strip() or None
+        lat     = payload.get("lat", None)
+        lng     = payload.get("lng", None)
+
+        open_time_raw  = payload.get("open_time")  or payload.get("work_from") or None
+        close_time_raw = payload.get("close_time") or payload.get("work_to")   or None
+        open_time  = _parse_time(open_time_raw)
+        close_time = _parse_time(close_time_raw)
+
+        await conn.execute(
+            """
+            UPDATE merchants SET
+                name       = COALESCE($2, name),
+                phone      = COALESCE($3, phone),
+                address    = COALESCE($4, address),
+                city       = COALESCE($5, city),
+                lat        = COALESCE($6, lat),
+                lng        = COALESCE($7, lng),
+                open_time  = COALESCE($8, open_time),
+                close_time = COALESCE($9, close_time)
+            WHERE id = $1
+            """,
+            restaurant_id, name, phone, address, city, lat, lng, open_time, close_time
+        )
+        return {"ok": True}
 
 @app.get("/api/v1/merchant/offers")
-async def list_offers(
-    request: Request,
-    restaurant_id: int = Query(..., description="Restaurant ID"),
-):
-    async with pool.acquire() as conn:
-        merchant_id = await require_key(conn, request)
-        # Keep it permissive: show offers owned by this merchant & restaurant
+async def list_offers(restaurant_id: int, request: Request):
+    api_key = _get_api_key(request)
+    async with _pool.acquire() as conn:
+        await _require_auth(conn, restaurant_id, api_key)
         rows = await conn.fetch(
             """
-            SELECT *
+            SELECT id, restaurant_id, title, price_cents, original_price_cents, qty_total, qty_left,
+                   expires_at, image_url, category, description
             FROM offers
-            WHERE restaurant_id = $1
-              AND (merchant_id = $2 OR $2 IS NOT NULL)
-              AND (status IS NULL OR status != 'deleted')
-            ORDER BY id DESC
+            WHERE restaurant_id=$1
+            ORDER BY created_at DESC
             """,
-            restaurant_id,
-            merchant_id,
+            restaurant_id
         )
-        return [row_to_dict(r) for r in rows]
+        out = []
+        for r in rows:
+            d = dict(r)
+            if d.get("expires_at"):
+                d["expires_at"] = d["expires_at"].astimezone(timezone.utc).isoformat()
+            out.append(d)
+        return out
+
+# повторное объявление оставлено для совместимости кода ниже
+class OfferCreate(BaseModel):
+    merchant_id: Optional[int] = None
+    restaurant_id: int
+    title: str
+    price: float
+    original_price: Optional[float] = None
+    qty_total: int = 1
+    qty_left: Optional[int] = None
+    expires_at: str
+    image_url: Optional[str] = None
+    category: Optional[str] = None
+    description: Optional[str] = None
 
 @app.post("/api/v1/merchant/offers")
-async def create_offer(request: Request, payload: Dict[str, Any]):
-    async with pool.acquire() as conn:
-        merchant_id = await require_key(conn, request)
-        cols_info = await fetch_columns(conn, "offers")
+async def create_offer(payload: OfferCreate, request: Request):
+    """
+    Safe insert for offers: writes both merchant_id and restaurant_id,
+    coalesces image_url to non-null string, supports price/price_cents schemas.
+    """
+    api_key = _get_api_key(request)
+    async with _pool.acquire() as conn:
+        # authorize by merchant_id or restaurant_id
+        rid = int(payload.merchant_id or payload.restaurant_id)
+        await _require_auth(conn, rid, api_key)
 
-        # Validate restaurant_id
-        restaurant_id = payload.get("restaurant_id")
-        if not restaurant_id:
-            raise HTTPException(status_code=400, detail="restaurant_id is required")
+        # numbers
+        price_val = float(payload.price or 0)
+        original_val = float(payload.original_price) if payload.original_price is not None else None
+        price_cents = int(round(price_val * 100)) if payload.price is not None else None
+        orig_cents  = int(round(original_val * 100)) if original_val is not None else None
 
-        # Image URL requirement if column exists and NOT NULL
-        if "image_url" in cols_info and not cols_info["image_url"]["is_nullable"]:
-            if not payload.get("image_url"):
-                raise HTTPException(status_code=400, detail="image_url is required")
+        qty_total = payload.qty_total or 1
+        qty_left = payload.qty_left if payload.qty_left is not None else qty_total
 
-        # Prepare values
-        title = (payload.get("title") or "").strip()
-        category = payload.get("category", "ready_meal")
-        description = payload.get("description") or None
-        expires_at = payload.get("expires_at")
-        if expires_at:
-            try:
-                # allow both "YYYY-MM-DD HH:MM" and ISO
-                if "T" not in expires_at and ":" in expires_at:
-                    expires_at = expires_at.replace(" ", "T")
-                expires_at = datetime.fromisoformat(expires_at)
-            except Exception:
-                raise HTTPException(status_code=400, detail="Invalid expires_at format")
+        expires = _parse_expires_at(payload.expires_at)
+        if not expires:
+            raise HTTPException(status_code=400, detail="invalid expires_at")
 
-        qty_total = int(payload.get("qty_total") or 1)
-        qty_left = int(payload.get("qty_left") or qty_total)
+        # image url must not be NULL for strict schemas
+        image_url = (payload.image_url or "").strip()
 
-        price = payload.get("price")
-        price_cents = payload.get("price_cents", to_cents(price))
-        original_price = payload.get("original_price")
-        original_price_cents = payload.get("original_price_cents", to_cents(original_price))
-
-        image_url = payload.get("image_url") or None
-
-        # Build dynamic insert based on existing columns
-        fields = ["merchant_id", "restaurant_id", "title"]
-        values = [merchant_id, restaurant_id, title]
-
-        def add(col, val):
-            fields.append(col)
-            values.append(val)
-
-        if "price_cents" in cols_info:
-            add("price_cents", price_cents)
-        if "original_price_cents" in cols_info:
-            add("original_price_cents", original_price_cents)
-        if "price" in cols_info:
-            add("price", price if price is not None else (from_cents(price_cents) if price_cents is not None else None))
-        if "original_price" in cols_info:
-            add("original_price", original_price if original_price is not None else (from_cents(original_price_cents) if original_price_cents is not None else None))
-
-        if "qty_total" in cols_info:
-            add("qty_total", qty_total)
-        if "qty_left" in cols_info:
-            add("qty_left", qty_left)
-        if "expires_at" in cols_info:
-            add("expires_at", expires_at)
-        if "image_url" in cols_info:
-            add("image_url", image_url)
-        if "category" in cols_info:
-            add("category", category)
-        if "description" in cols_info:
-            add("description", description)
-        if "status" in cols_info:
-            add("status", "active")
-
-        placeholders = ", ".join(f"${i}" for i in range(1, len(values) + 1))
-        columns = ", ".join(fields)
-
-        row = await conn.fetchrow(
-            f"INSERT INTO offers ({columns}) VALUES ({placeholders}) RETURNING *",
-            *values
-        )
-        return row_to_dict(row)
-
-@app.patch("/api/v1/merchant/offers/{offer_id}")
-async def patch_offer(offer_id: int, request: Request, payload: Dict[str, Any]):
-    async with pool.acquire() as conn:
-        merchant_id = await require_key(conn, request)
-        cols_info = await fetch_columns(conn, "offers")
-
-        mapping = {
-            "title": "title",
-            "price": "price",
-            "price_cents": "price_cents",
-            "original_price": "original_price",
-            "original_price_cents": "original_price_cents",
-            "qty_total": "qty_total",
-            "qty_left": "qty_left",
-            "expires_at": "expires_at",
-            "image_url": "image_url",
-            "category": "category",
-            "description": "description",
-            "status": "status",
-        }
-
-        sets = []
-        values = []
-        for k, v in payload.items():
-            col = mapping.get(k)
-            if not col or col not in cols_info:
-                continue
-            if col in ("price_cents", "original_price_cents") and isinstance(v, (int, float, str)):
-                try:
-                    v = int(v)
-                except Exception:
-                    v = None
-            if col in ("price", "original_price") and v is not None:
-                try:
-                    v = float(v)
-                except Exception:
-                    v = None
-            if k == "expires_at" and isinstance(v, str):
-                # allow both "YYYY-MM-DD HH:MM" and ISO
-                if "T" not in v and ":" in v:
-                    v = v.replace(" ", "T")
-                try:
-                    v = datetime.fromisoformat(v)
-                except Exception:
-                    raise HTTPException(status_code=400, detail="Invalid expires_at format")
-            sets.append(f"{col} = ${len(values) + 1}")
-            values.append(v)
-
-        if not sets:
-            return {"updated": 0}
-
-        # WHERE
-        values.append(offer_id)
-        values.append(merchant_id)
-
-        q = f"UPDATE offers SET {', '.join(sets)} WHERE id = ${len(values)-1} AND merchant_id = ${len(values)} RETURNING *"
-        row = await conn.fetchrow(q, *values)
-        if not row:
-            raise HTTPException(status_code=404, detail="Offer not found")
-        return row_to_dict(row)
-
-@app.delete("/api/v1/merchant/offers/{offer_id}")
-async def delete_offer(offer_id: int, request: Request):
-    async with pool.acquire() as conn:
-        merchant_id = await require_key(conn, request)
-        cols_info = await fetch_columns(conn, "offers")
-        if "status" in cols_info:
+        # Attempt 1: wide schema (float + cents)
+        try:
             row = await conn.fetchrow(
-                "UPDATE offers SET status = 'deleted' WHERE id=$1 AND merchant_id=$2 RETURNING *",
-                offer_id, merchant_id
+                """
+                INSERT INTO offers (
+                    merchant_id,
+                    restaurant_id,
+                    title,
+                    price,
+                    price_cents,
+                    original_price,
+                    original_price_cents,
+                    qty_total,
+                    qty_left,
+                    expires_at,
+                    image_url,
+                    category,
+                    description
+                )
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+                RETURNING id
+                """,
+                rid, rid, payload.title,
+                price_val if payload.price is not None else None,
+                price_cents,
+                original_val,
+                orig_cents,
+                qty_total, qty_left, expires,
+                image_url, payload.category, payload.description
             )
-            if row:
-                return {"ok": True, "deleted": row_to_dict(row)}
-        # hard delete fallback
-        res = await conn.execute("DELETE FROM offers WHERE id=$1 AND merchant_id=$2", offer_id, merchant_id)
-        return {"ok": res.startswith("DELETE")}
+        except Exception:
+            # Attempt 2: cents-only schema
+            try:
+                row = await conn.fetchrow(
+                    """
+                    INSERT INTO offers (
+                        merchant_id,
+                        restaurant_id,
+                        title,
+                        price_cents,
+                        original_price_cents,
+                        qty_total,
+                        qty_left,
+                        expires_at,
+                        image_url,
+                        category,
+                        description
+                    )
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+                    RETURNING id
+                    """,
+                    rid, rid, payload.title,
+                    price_cents, orig_cents,
+                    qty_total, qty_left, expires,
+                    image_url, payload.category, payload.description
+                )
+            except Exception:
+                # Attempt 3: float-only schema
+                row = await conn.fetchrow(
+                    """
+                    INSERT INTO offers (
+                        merchant_id,
+                        restaurant_id,
+                        title,
+                        price,
+                        original_price,
+                        qty_total,
+                        qty_left,
+                        expires_at,
+                        image_url,
+                        category,
+                        description
+                    )
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+                    RETURNING id
+                    """,
+                    rid, rid, payload.title,
+                    price_val if payload.price is not None else None,
+                    original_val,
+                    qty_total, qty_left, expires,
+                    image_url, payload.category, payload.description
+                )
+        return {"id": row["id"]}
 
-@app.post("/api/v1/merchant/offers/{offer_id}/delete")
-async def delete_offer_post(offer_id: int, request: Request):
-    # Fallback when DELETE is blocked by proxies
-    return await delete_offer(offer_id, request)
+@app.get("/")
+async def root():
+    return {"ok": True, "service": APP_NAME}
+
+@app.put("/api/v1/merchant/password")
+async def change_password(payload: dict = Body(...), request: Request = None):
+    restaurant_id = int(payload.get("restaurant_id") or 0)
+    old_password = (payload.get("old_password") or "").strip()
+    new_password = (payload.get("new_password") or "").strip()
+    if not restaurant_id or not old_password or not new_password:
+        raise HTTPException(status_code=400, detail="restaurant_id, old_password, new_password required")
+    if len(new_password) < 6:
+        raise HTTPException(status_code=400, detail="new password too short")
+
+    api_key = request.headers.get("X-Foody-Key") if request else ""
+    if not api_key:
+        api_key = request.headers.get("x-foody-key") if request else ""
+    async with _pool.acquire() as conn:
+        await _require_auth(conn, restaurant_id, api_key)
+        row = await conn.fetchrow("SELECT password_hash FROM merchants WHERE id=$1", restaurant_id)
+        if not row or row["password_hash"] != _hash_password(old_password):
+            raise HTTPException(status_code=401, detail="invalid current password")
+        await conn.execute("UPDATE merchants SET password_hash=$2 WHERE id=$1", restaurant_id, _hash_password(new_password))
+        return {"ok": True}
