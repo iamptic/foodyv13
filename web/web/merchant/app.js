@@ -632,27 +632,54 @@ function joinApi(path) {
   if (/^https?:\/\//i.test(base)) return base.replace(/\/+$/, '') + path;
   return path;
 }
+
+
+function foodyBase() {
+  try { return (window.__FOODY__ && window.__FOODY__.FOODY_API) || window.foodyApi || ''; }
+  catch(_) { return ''; }
+}
+function joinApi(path) {
+  const base = foodyBase();
+  if (/^https?:\/\//i.test(path)) return path;
+  if (/^https?:\/\//i.test(base)) return base.replace(/\/+$/, '') + path;
+  return path;
+}
 async function postOfferStrict(payload) {
   const url = joinApi('/api/v1/merchant/offers');
   const headers = { 'Content-Type': 'application/json' };
   if (state && state.key) headers['X-Foody-Key'] = state.key;
-  const res = await fetch(url, {
-    method: 'POST', headers, body: JSON.stringify(payload), mode: 'cors',
-  });
-  if (!res.ok) {
-    let msg = 'Ошибка ' + res.status;
-    try { const data = await res.json(); if (data?.detail) msg = data.detail; } catch(_){}
-    if (res.status === 401) {
-      throw new Error('401: ключ авторизации не принят. Войдите заново.');
+  const doReq = async (u, body) => {
+    const res = await fetch(u, { method: 'POST', headers, body: JSON.stringify(body), mode: 'cors' });
+    const ct = res.headers.get('content-type') || '';
+    const data = ct.includes('application/json') ? await res.json().catch(()=>({})) : await res.text();
+    if (!res.ok) {
+      const msg = typeof data==='object' && data && data.detail ? data.detail : ('Ошибка ' + res.status);
+      const err = new Error(msg); err.status = res.status; err.data = data; throw err;
     }
-    throw new Error(msg);
+    return data;
+  };
+  try {
+    return await doReq(url, payload);
+  } catch (e) {
+    const msg = String(e?.data?.detail || e?.message || '');
+    if (e.status === 500 && msg.includes('merchant_id')) {
+      const u2 = url + (url.includes('?')?'&':'?') + 'merchant_id=' + encodeURIComponent(payload.merchant_id || payload.restaurant_id || '');
+      return await doReq(u2, payload);
+    }
+    throw e;
   }
-  const ct = res.headers.get('content-type') || '';
-  return ct.includes('application/json') ? res.json() : res.text();
 }
 
 document.addEventListener('DOMContentLoaded', () => {
     try {
+      // Universal [data-tab] router (incl. dashboard buttons)
+      document.addEventListener('click', (ev) => {
+        try {
+          const el = ev.target.closest('[data-tab]');
+          if (el) { ev.preventDefault(); const t = el.getAttribute('data-tab') || el.dataset.tab; if (t) activateTab(t); }
+        } catch(_) {}
+      }, true);
+
 
 // --- Dedup toasts for login/logout (avoid double "Вы вышли/вошли") ---
 try {
@@ -697,6 +724,8 @@ try {
 } catch(_) {}
 
 // --- Offer create submit (strict auth + merchant_id) ---
+
+// Offer create submit (strict + aliases + fallback)
 on('#offerForm','submit', async (e) => {
   e.preventDefault();
   const form = e.currentTarget;
@@ -708,10 +737,13 @@ on('#offerForm','submit', async (e) => {
   const toInt = (v) => { const n = parseInt(String(v||'').trim(), 10); return isFinite(n) ? n : 0; };
   const trim = (v) => String(v||'').trim();
 
-  const rid = (state && (state.rid || state.restaurant_id)) || null;
+  const rid = (state && (state.rid || state.restaurant_id)) || (parseInt(localStorage.getItem('foody_restaurant_id')||'0',10)) || null;
+
   const payload = {
     restaurant_id: rid || undefined,
-    merchant_id: rid || undefined, // <- для бэка, где поле называется merchant_id
+    restaurantId: rid || undefined,
+    merchant_id: rid || undefined,
+    merchantId: rid || undefined,
     title: trim(fd.get('title')),
     original_price: toNum(fd.get('original_price')||fd.get('price_base')) || undefined,
     price: toNum(fd.get('price')),
@@ -725,7 +757,6 @@ on('#offerForm','submit', async (e) => {
   const bb = trim(fd.get('best_before'));
   if (bb) payload.best_before = dtLocalToIso(bb) || bb;
 
-  // quick validations
   if (!payload.title) { showInlineError('#offerError','Укажите название'); return; }
   if (!(payload.qty_total > 0)) { showInlineError('#offerError','Количество должно быть больше 0'); return; }
   if (!(payload.price > 0)) { showInlineError('#offerError','Новая цена должна быть больше 0'); return; }
@@ -743,12 +774,8 @@ on('#offerForm','submit', async (e) => {
     try { await loadOffers(); } catch(_){}
     try { refreshDashboard && refreshDashboard(); } catch(_){}
   } catch (e2) {
-    if (String(e2.message||'').startsWith('401')) {
-      showInlineError('#offerError','Сессия истекла. Войдите заново.');
-      activateTab('auth');
-    } else {
-      showInlineError('#offerError', e2?.message || 'Ошибка при сохранении');
-    }
+    showInlineError('#offerError', e2?.message || 'Ошибка при сохранении');
+    if (String(e2.message||'').startsWith('401')) activateTab('auth');
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = 'Сохранить оффер'; }
   }
