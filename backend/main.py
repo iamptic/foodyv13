@@ -191,14 +191,6 @@ async def _require_auth(conn: asyncpg.Connection, restaurant_id: int, api_key: s
 def _get_api_key(req: Request) -> str:
     return req.headers.get("X-Foody-Key") or req.headers.get("x-foody-key") or ""
 
-
-async def _get_table_columns(conn: asyncpg.Connection, table: str) -> Set[str]:
-    cols = await conn.fetch("""
-        SELECT column_name FROM information_schema.columns
-        WHERE table_name=$1 AND table_schema=current_schema()
-    """, table)
-    return {r["column_name"] for r in cols}
-
 class RegisterRequest(BaseModel):
     name: str
     login: str
@@ -359,20 +351,23 @@ class OfferCreate(BaseModel):
     category: Optional[str] = None
     description: Optional[str] = None
 
-
 @app.post("/api/v1/merchant/offers")
 async def create_offer(payload: OfferCreate, request: Request):
+    """
+    Safe insert for offers: writes both merchant_id and restaurant_id,
+    coalesces image_url to non-null string, supports price/price_cents schemas.
+    """
     api_key = _get_api_key(request)
     async with _pool.acquire() as conn:
-        # авторизуем по merchant_id или restaurant_id
+        # authorize by merchant_id or restaurant_id
         rid = int(payload.merchant_id or payload.restaurant_id)
         await _require_auth(conn, rid, api_key)
 
-        # Базовые вычисления цены
-        price_value = float(payload.price or 0)
-        price_cents = int(round(price_value * 100))
-        original_value = float(payload.original_price) if (payload.original_price is not None) else None
-        original_cents = int(round(original_value * 100)) if (original_value is not None) else None
+        # numbers
+        price_val = float(payload.price or 0)
+        original_val = float(payload.original_price) if payload.original_price is not None else None
+        price_cents = int(round(price_val * 100)) if payload.price is not None else None
+        orig_cents  = int(round(original_val * 100)) if original_val is not None else None
 
         qty_total = payload.qty_total or 1
         qty_left = payload.qty_left if payload.qty_left is not None else qty_total
@@ -381,41 +376,92 @@ async def create_offer(payload: OfferCreate, request: Request):
         if not expires:
             raise HTTPException(status_code=400, detail="invalid expires_at")
 
-        # Динамически подстраиваемся под схему offers
-        colset = await _get_table_columns(conn, "offers")
-        columns = ["merchant_id", "restaurant_id", "title"]
-        values = [rid, rid, payload.title]
+        # image url must not be NULL for strict schemas
+        image_url = (payload.image_url or "").strip()
 
-        # Пишем price / price_cents по наличию колонок (поддержка старой/новой схемы)
-        if "price" in colset:
-            columns.append("price")
-            values.append(price_value)
-        if "price_cents" in colset:
-            columns.append("price_cents")
-            values.append(price_cents)
-        if "original_price" in colset:
-            columns.append("original_price")
-            values.append(original_value)
-        if "original_price_cents" in colset:
-            columns.append("original_price_cents")
-            values.append(original_cents)
-
-        # Остальные поля
-        columns += ["qty_total", "qty_left", "expires_at", "image_url", "category", "description"]
-        values  += [qty_total,  qty_left,  expires,     payload.image_url, payload.category, payload.description]
-
-        # Собираем плейсхолдеры $1..$N
-        placeholders = ", ".join(f"${i}" for i in range(1, len(values)+1))
-        cols_sql = ", ".join(columns)
-
-        row = await conn.fetchrow(f"""
-            INSERT INTO offers ({cols_sql})
-            VALUES ({placeholders})
-            RETURNING id
-        """, *values)
-
+        # Attempt 1: wide schema (float + cents)
+        try:
+            row = await conn.fetchrow(
+                """
+                INSERT INTO offers (
+                    merchant_id,
+                    restaurant_id,
+                    title,
+                    price,
+                    price_cents,
+                    original_price,
+                    original_price_cents,
+                    qty_total,
+                    qty_left,
+                    expires_at,
+                    image_url,
+                    category,
+                    description
+                )
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+                RETURNING id
+                """,
+                rid, rid, payload.title,
+                price_val if payload.price is not None else None,
+                price_cents,
+                original_val,
+                orig_cents,
+                qty_total, qty_left, expires,
+                image_url, payload.category, payload.description
+            )
+        except Exception:
+            # Attempt 2: cents-only schema
+            try:
+                row = await conn.fetchrow(
+                    """
+                    INSERT INTO offers (
+                        merchant_id,
+                        restaurant_id,
+                        title,
+                        price_cents,
+                        original_price_cents,
+                        qty_total,
+                        qty_left,
+                        expires_at,
+                        image_url,
+                        category,
+                        description
+                    )
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+                    RETURNING id
+                    """,
+                    rid, rid, payload.title,
+                    price_cents, orig_cents,
+                    qty_total, qty_left, expires,
+                    image_url, payload.category, payload.description
+                )
+            except Exception:
+                # Attempt 3: float-only schema
+                row = await conn.fetchrow(
+                    """
+                    INSERT INTO offers (
+                        merchant_id,
+                        restaurant_id,
+                        title,
+                        price,
+                        original_price,
+                        qty_total,
+                        qty_left,
+                        expires_at,
+                        image_url,
+                        category,
+                        description
+                    )
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+                    RETURNING id
+                    """,
+                    rid, rid, payload.title,
+                    price_val if payload.price is not None else None,
+                    original_val,
+                    qty_total, qty_left, expires,
+                    image_url, payload.category, payload.description
+                )
         return {"id": row["id"]}
-
 
 @app.get("/")
 async def root():
