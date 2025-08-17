@@ -1,9 +1,8 @@
 import os
-from fastapi.staticfiles import StaticFiles
 from typing import Any, Dict, Optional, Set
 
 import asyncpg
-from fastapi import FastAPI, HTTPException, Body, Request, UploadFile, File
+from fastapi import FastAPI, HTTPException, Body, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from datetime import datetime, timezone, time as dtime
@@ -23,18 +22,6 @@ CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o
 RECOVERY_SECRET = os.getenv("RECOVERY_SECRET", "foodyDevRecover123")
 
 app = FastAPI(title=APP_NAME, version="1.0")
-
-# Foody uploads (local fallback): serve /u/*
-UPLOAD_DIR = os.environ.get("FOODY_UPLOAD_DIR", "/app/uploads")
-try:
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-except Exception:
-    try:
-        os.makedirs("/tmp/uploads", exist_ok=True)
-        UPLOAD_DIR = "/tmp/uploads"
-    except Exception:
-        pass
-app.mount("/u", StaticFiles(directory=UPLOAD_DIR), name="u")
 
 # CORS before routes
 app.add_middleware(
@@ -89,7 +76,6 @@ async def _migrate():
             "ALTER TABLE merchants ADD COLUMN IF NOT EXISTS auth_login TEXT;",
             "ALTER TABLE merchants ADD COLUMN IF NOT EXISTS open_time TIME;",
             "ALTER TABLE merchants ADD COLUMN IF NOT EXISTS close_time TIME;",
-            "ALTER TABLE merchants ADD COLUMN IF NOT EXISTS image_url TEXT;",
         ]:
             await conn.execute(ddl)
 
@@ -205,6 +191,14 @@ async def _require_auth(conn: asyncpg.Connection, restaurant_id: int, api_key: s
 def _get_api_key(req: Request) -> str:
     return req.headers.get("X-Foody-Key") or req.headers.get("x-foody-key") or ""
 
+
+async def _get_table_columns(conn: asyncpg.Connection, table: str) -> Set[str]:
+    cols = await conn.fetch("""
+        SELECT column_name FROM information_schema.columns
+        WHERE table_name=$1 AND table_schema=current_schema()
+    """, table)
+    return {r["column_name"] for r in cols}
+
 class RegisterRequest(BaseModel):
     name: str
     login: str
@@ -276,7 +270,7 @@ async def get_profile(restaurant_id: int, request: Request):
     async with _pool.acquire() as conn:
         await _require_auth(conn, restaurant_id, api_key)
         row = await conn.fetchrow(
-            "SELECT id, name, login, phone, email, address, city, lat, lng, open_time, close_time, image_url FROM merchants WHERE id=$1",
+            "SELECT id, name, login, phone, email, address, city, lat, lng, open_time, close_time FROM merchants WHERE id=$1",
             restaurant_id
         )
         if not row:
@@ -298,10 +292,6 @@ async def update_profile(payload: Dict[str, Any] = Body(...), request: Request =
 
     async with _pool.acquire() as conn:
         await _require_auth(conn, restaurant_id, api_key)
-
-        # optional image_url
-        if payload.get("image_url") is not None:
-            await conn.execute("UPDATE merchants SET image_url=$1 WHERE id=$2", str(payload.get("image_url") or ""), restaurant_id)
 
         name    = (payload.get("name") or "").strip() or None
         phone   = (payload.get("phone") or "").strip() or None
@@ -332,31 +322,6 @@ async def update_profile(payload: Dict[str, Any] = Body(...), request: Request =
         )
         return {"ok": True}
 
-
-@app.post("/upload")
-async def upload_image(file: UploadFile = File(...), request: Request = None):
-    # lightweight local uploader (R2 can be added later)
-    if not file or not file.filename:
-        raise HTTPException(status_code=400, detail="file required")
-    name = file.filename
-    # extension whitelist
-    ext = os.path.splitext(name)[1].lower()
-    if ext not in [".jpg", ".jpeg", ".png", ".webp", ".gif"]:
-        ext = ".jpg"
-    from uuid import uuid4
-    safe = uuid4().hex + ext
-    dest = os.path.join(UPLOAD_DIR, safe)
-    data = await file.read()
-    if len(data) > 7 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="file too large")
-    try:
-        with open(dest, "wb") as f:
-            f.write(data)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="save failed")
-    base = str(request.base_url).rstrip("/")
-    url = f"{base}/u/{safe}"
-    return {"url": url}
 @app.get("/api/v1/merchant/offers")
 async def list_offers(restaurant_id: int, request: Request):
     api_key = _get_api_key(request)
@@ -394,97 +359,20 @@ class OfferCreate(BaseModel):
     category: Optional[str] = None
     description: Optional[str] = None
 
+
 @app.post("/api/v1/merchant/offers")
-
-@app.patch("/api/v1/merchant/offers/{offer_id}")
-async def update_offer(offer_id: int, payload: Dict[str, Any] = Body(...), request: Request = None):
-    api_key = _get_api_key(request)
-    async with _pool.acquire() as conn:
-        # Ensure ownership
-        owner = await conn.fetchrow("SELECT merchant_id, restaurant_id FROM offers WHERE id=$1", offer_id)
-        if not owner:
-            raise HTTPException(status_code=404, detail="offer not found")
-        rid = owner["merchant_id"] or owner["restaurant_id"]
-        await _require_auth(conn, int(rid), api_key)
-
-        # Prepare fields
-        def _to_float(v):
-            try:
-                if v is None: return None
-                if isinstance(v, (int,float)): return float(v)
-                return float(str(v).replace(',','.'))
-            except Exception: return None
-
-        price_f = _to_float(payload.get("price"))
-        orig_f  = _to_float(payload.get("original_price"))
-        price_cents = int(round(price_f*100)) if price_f is not None else None
-        original_price_cents = int(round(orig_f*100)) if orig_f is not None else None
-        qty_total = payload.get("qty_total")
-        qty_left  = payload.get("qty_left")
-        if qty_total is not None and qty_left is None:
-            qty_left = qty_total
-
-        expires = None
-        if payload.get("expires_at") is not None:
-            expires = _parse_expires_at(payload.get("expires_at"))
-            if not expires:
-                raise HTTPException(status_code=400, detail="invalid expires_at")
-
-        img = None
-        if "image_url" in payload:
-            img = (payload.get("image_url") or "").strip()
-
-        # Build SETs
-        sets = []; vals = []; idx = 1
-        def add(col, val):
-            nonlocal idx
-            sets.append(f"{col} = ${idx}"); vals.append(val); idx += 1
-
-        if payload.get("title") is not None: add("title", payload.get("title"))
-        if price_f is not None: add("price", price_f)
-        if price_cents is not None: add("price_cents", price_cents)
-        if orig_f is not None: add("original_price", orig_f)
-        if original_price_cents is not None: add("original_price_cents", original_price_cents)
-        if qty_total is not None: add("qty_total", int(qty_total))
-        if qty_left is not None: add("qty_left", int(qty_left))
-        if expires is not None: add("expires_at", expires)
-        if img is not None: add("image_url", img)
-        if payload.get("category") is not None: add("category", payload.get("category"))
-        if payload.get("description") is not None: add("description", payload.get("description"))
-
-        if not sets:
-            return {"id": offer_id}
-
-        # Try update with all columns
-        try:
-            row = await conn.fetchrow("UPDATE offers SET " + ", ".join(sets) + f" WHERE id=${idx} RETURNING id", *(vals + [offer_id]))
-        except Exception:
-            # Retry without float columns
-            sets2 = []; vals2 = []
-            for s, v in zip(sets, vals):
-                if s.startswith("price =") or s.startswith("original_price ="): continue
-                sets2.append(s); vals2.append(v)
-            if not sets2:
-                raise HTTPException(status_code=400, detail="nothing to update")
-            row = await conn.fetchrow("UPDATE offers SET " + ", ".join(sets2) + f" WHERE id=${len(vals2)+1} RETURNING id", *(vals2 + [offer_id]))
-
-        return {"id": row["id"]}
 async def create_offer(payload: OfferCreate, request: Request):
-    """
-    Safe insert for offers: writes both merchant_id and restaurant_id,
-    coalesces image_url to non-null string, supports price/price_cents schemas.
-    """
     api_key = _get_api_key(request)
     async with _pool.acquire() as conn:
-        # authorize by merchant_id or restaurant_id
+        # авторизуем по merchant_id или restaurant_id
         rid = int(payload.merchant_id or payload.restaurant_id)
         await _require_auth(conn, rid, api_key)
 
-        # numbers
-        price_val = float(payload.price or 0)
-        original_val = float(payload.original_price) if payload.original_price is not None else None
-        price_cents = int(round(price_val * 100)) if payload.price is not None else None
-        orig_cents  = int(round(original_val * 100)) if original_val is not None else None
+        # Базовые вычисления цены
+        price_value = float(payload.price or 0)
+        price_cents = int(round(price_value * 100))
+        original_value = float(payload.original_price) if (payload.original_price is not None) else None
+        original_cents = int(round(original_value * 100)) if (original_value is not None) else None
 
         qty_total = payload.qty_total or 1
         qty_left = payload.qty_left if payload.qty_left is not None else qty_total
@@ -493,92 +381,41 @@ async def create_offer(payload: OfferCreate, request: Request):
         if not expires:
             raise HTTPException(status_code=400, detail="invalid expires_at")
 
-        # image url must not be NULL for strict schemas
-        image_url = (payload.image_url or "").strip()
+        # Динамически подстраиваемся под схему offers
+        colset = await _get_table_columns(conn, "offers")
+        columns = ["merchant_id", "restaurant_id", "title"]
+        values = [rid, rid, payload.title]
 
-        # Attempt 1: wide schema (float + cents)
-        try:
-            row = await conn.fetchrow(
-                """
-                INSERT INTO offers (
-                    merchant_id,
-                    restaurant_id,
-                    title,
-                    price,
-                    price_cents,
-                    original_price,
-                    original_price_cents,
-                    qty_total,
-                    qty_left,
-                    expires_at,
-                    image_url,
-                    category,
-                    description
-                )
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-                RETURNING id
-                """,
-                rid, rid, payload.title,
-                price_val if payload.price is not None else None,
-                price_cents,
-                original_val,
-                orig_cents,
-                qty_total, qty_left, expires,
-                image_url, payload.category, payload.description
-            )
-        except Exception:
-            # Attempt 2: cents-only schema
-            try:
-                row = await conn.fetchrow(
-                    """
-                    INSERT INTO offers (
-                        merchant_id,
-                        restaurant_id,
-                        title,
-                        price_cents,
-                        original_price_cents,
-                        qty_total,
-                        qty_left,
-                        expires_at,
-                        image_url,
-                        category,
-                        description
-                    )
-                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-                    RETURNING id
-                    """,
-                    rid, rid, payload.title,
-                    price_cents, orig_cents,
-                    qty_total, qty_left, expires,
-                    image_url, payload.category, payload.description
-                )
-            except Exception:
-                # Attempt 3: float-only schema
-                row = await conn.fetchrow(
-                    """
-                    INSERT INTO offers (
-                        merchant_id,
-                        restaurant_id,
-                        title,
-                        price,
-                        original_price,
-                        qty_total,
-                        qty_left,
-                        expires_at,
-                        image_url,
-                        category,
-                        description
-                    )
-                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-                    RETURNING id
-                    """,
-                    rid, rid, payload.title,
-                    price_val if payload.price is not None else None,
-                    original_val,
-                    qty_total, qty_left, expires,
-                    image_url, payload.category, payload.description
-                )
+        # Пишем price / price_cents по наличию колонок (поддержка старой/новой схемы)
+        if "price" in colset:
+            columns.append("price")
+            values.append(price_value)
+        if "price_cents" in colset:
+            columns.append("price_cents")
+            values.append(price_cents)
+        if "original_price" in colset:
+            columns.append("original_price")
+            values.append(original_value)
+        if "original_price_cents" in colset:
+            columns.append("original_price_cents")
+            values.append(original_cents)
+
+        # Остальные поля
+        columns += ["qty_total", "qty_left", "expires_at", "image_url", "category", "description"]
+        values  += [qty_total,  qty_left,  expires,     payload.image_url, payload.category, payload.description]
+
+        # Собираем плейсхолдеры $1..$N
+        placeholders = ", ".join(f"${i}" for i in range(1, len(values)+1))
+        cols_sql = ", ".join(columns)
+
+        row = await conn.fetchrow(f"""
+            INSERT INTO offers ({cols_sql})
+            VALUES ({placeholders})
+            RETURNING id
+        """, *values)
+
         return {"id": row["id"]}
+
 
 @app.get("/")
 async def root():
@@ -604,24 +441,3 @@ async def change_password(payload: dict = Body(...), request: Request = None):
             raise HTTPException(status_code=401, detail="invalid current password")
         await conn.execute("UPDATE merchants SET password_hash=$2 WHERE id=$1", restaurant_id, _hash_password(new_password))
         return {"ok": True}
-
-
-@app.delete("/api/v1/merchant/offers/{offer_id}")
-async def delete_offer(offer_id: int, request: Request = None):
-    api_key = _get_api_key(request)
-    async with _pool.acquire() as conn:
-        owner = await conn.fetchrow("SELECT merchant_id, restaurant_id FROM offers WHERE id=$1", offer_id)
-        if not owner:
-            raise HTTPException(status_code=404, detail="offer not found")
-        rid = owner["merchant_id"] or owner["restaurant_id"]
-        await _require_auth(conn, int(rid), api_key)
-
-        # Try soft-delete
-        try:
-            row = await conn.fetchrow("UPDATE offers SET status='deleted' WHERE id=$1 RETURNING id", offer_id)
-            if row: return {"id": row["id"], "deleted": True, "mode": "soft"}
-        except Exception:
-            pass
-
-        await conn.execute("DELETE FROM offers WHERE id=$1", offer_id)
-        return {"id": offer_id, "deleted": True, "mode": "hard"}
