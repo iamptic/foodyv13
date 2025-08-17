@@ -14,7 +14,7 @@
   <script defer src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ru.js"></script>
   <script>window.foodyApi = (window.__FOODY__ && window.__FOODY__.FOODY_API) || window.foodyApi || 'https://foodyback-production.up.railway.app';</script>
   <script defer src="/config.js"></script>
-  <script defer src="./app.js?v=no247-3"></script>
+  <script defer src="./app.js?v=no247-5"></script>
   <style>
     #cityModal[aria-hidden="true"] { display: none; }
     #cityModal[aria-hidden="false"] { display: block; }
@@ -92,12 +92,24 @@
     </nav>
 
     <main class="content">
-      <section class="pane active" id="dashboard">
-        <div class="card">
-          <div class="card-title">Добро пожаловать</div>
-          <p class="muted">Войдите или зарегистрируйтесь, чтобы создавать офферы и управлять профилем.</p>
-        </div>
-      </section>
+      
+<section class="pane active" id="dashboard">
+  <div class="card">
+    <div class="card-title">Дашборд</div>
+    <p id="dashGuest" class="muted">Войдите или зарегистрируйтесь, чтобы создавать офферы и управлять профилем.</p>
+    <div id="dashStats" class="grid two" style="display:none;gap:12px;">
+      <div class="card kpi"><div class="card-title small">Активные офферы</div><div id="kpiActive" class="big">—</div></div>
+      <div class="card kpi"><div class="card-title small">Остаток, шт</div><div id="kpiQty" class="big">—</div></div>
+      <div class="card kpi"><div class="card-title small">Потенц. выручка</div><div id="kpiRevenue" class="big">—</div></div>
+      <div class="card kpi"><div class="card-title small">Истекают &lt; 2ч</div><div id="kpiSoon" class="big">—</div></div>
+    </div>
+    <div id="dashActions" style="display:none;margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn btn-primary" data-tab="create">Создать оффер</button>
+      <button class="btn btn-ghost" data-tab="offers">Мои офферы</button>
+    </div>
+  </div>
+</section>
+
       
       <!-- AUTH pane (re-added) -->
       <section class="pane" id="auth">
@@ -391,7 +403,6 @@
 <script src="https://unpkg.com/filepond-plugin-image-preview@4.6.12/dist/filepond-plugin-image-preview.min.js" defer></script>
 <script src="https://unpkg.com/filepond-plugin-file-validate-type@1.2.8/dist/filepond-plugin-file-validate-type.min.js" defer></script>
 <script src="https://unpkg.com/filepond-plugin-file-validate-size@2.2.8/dist/filepond-plugin-file-validate-size.min.js" defer></script>
-<script defer src="./app.js?v=no247-4"></script>
 
 </body>
 </html>

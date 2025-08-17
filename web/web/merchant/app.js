@@ -102,7 +102,7 @@
     }
     const tabs = $('#tabs'); if (tabs) tabs.style.display = '';
     const bn = $('.bottom-nav'); if (bn) bn.style.display = '';
-    activateTab('offers');
+    activateTab('offers'); try{ refreshDashboard(); }catch(_){ }
     toggleLogout(true);
     return true;
   }
@@ -533,7 +533,80 @@
     root.innerHTML = head + rows;
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
+  
+// === Dashboard helpers (lightweight) ===
+function safeNum(v){ const n = Number(v); return isFinite(n) ? n : 0; }
+function parseMaybeDate(v){
+  if (!v) return null;
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(v)) return new Date(v.replace(' ', 'T'));
+  try { const d = new Date(v); return isNaN(d) ? null : d; } catch(_){ return null; }
+}
+function moneyFmt(n){ try{ return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g,' '); }catch(_){ return String(n); }}
+
+function renderDashboard(offers){
+  const guest = document.getElementById('dashGuest');
+  const stats = document.getElementById('dashStats');
+  const acts  = document.getElementById('dashActions');
+  if (!stats || !acts){ if (guest) guest.style.display='block'; return; }
+
+  const now = new Date();
+  const soon = new Date(now.getTime()+2*60*60*1000);
+
+  let active=0, qtySum=0, soonCount=0, revenue=0;
+
+  const arr = Array.isArray(offers) ? offers : (offers?.items || offers?.results || []);
+  for (const o of arr){
+    const ex = parseMaybeDate(o.expires_at || o.expiresAt || o.expires || o.until);
+    const qty = o.qty_left ?? o.qtyLeft ?? o.qty ?? o.qty_total ?? o.qtyTotal ?? 0;
+    const pr  = o.price ?? o.new_price ?? o.final_price ?? 0;
+    const isActive = (qty>0) && (!ex || ex>now);
+    if (isActive){
+      active++;
+      qtySum += safeNum(qty);
+      revenue += safeNum(pr) * safeNum(qty);
+      if (ex && ex<=soon) soonCount++;
+    }
+  }
+
+  const kActive = document.getElementById('kpiActive');
+  const kQty    = document.getElementById('kpiQty');
+  const kRev    = document.getElementById('kpiRevenue');
+  const kSoon   = document.getElementById('kpiSoon');
+
+  if (kActive) kActive.textContent = String(active);
+  if (kQty)    kQty.textContent    = String(qtySum);
+  if (kRev)    kRev.textContent    = moneyFmt(revenue)+' ₽';
+  if (kSoon)   kSoon.textContent   = String(soonCount);
+
+  if (guest) guest.style.display = 'none';
+  stats.style.display = '';
+  acts.style.display  = '';
+}
+
+async function refreshDashboard(){
+  const guest = document.getElementById('dashGuest');
+  const stats = document.getElementById('dashStats');
+  const acts  = document.getElementById('dashActions');
+
+  const authed = !!(state && state.rid && state.key);
+  if (!authed){
+    if (guest) guest.style.display='block';
+    if (stats) stats.style.display='none';
+    if (acts)  acts.style.display='none';
+    return;
+  }
+  try{
+    const data = await api(`/api/v1/merchant/offers?restaurant_id=${encodeURIComponent(state.rid)}`);
+    const list = data?.items || data?.results || data || [];
+    renderDashboard(list);
+  }catch(e){
+    if (guest) guest.style.display='block';
+    if (stats) stats.style.display='none';
+    if (acts)  acts.style.display='none';
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
     try {
       attachPhoneMask($('#loginPhone'));
       attachPhoneMask($('#registerPhone'));
@@ -546,55 +619,9 @@
       CityPicker.setInitial('#profileCityOpen', '#profileCityValue');
       bindWorkPresets('.work-presets[data-for="register"]', 'input[name="work_from"]', 'input[name="work_to"]');
       bindWorkPresets('.work-presets[data-for="profile"]', '#profile_work_from', '#profile_work_to');
-      
-// --- Offer create submit (safe minimal) ---
-on('#offerForm','submit', async (e) => {
-  e.preventDefault();
-  const form = e.currentTarget;
-  const err = form.querySelector('#offerError');
-  if (err) { err.classList.add('hidden'); }
-  const fd = new FormData(form);
-  const toNum = (v) => { const n = parseFloat(String(v||'').replace(',', '.')); return isFinite(n) ? n : 0; };
-  const toInt = (v) => { const n = parseInt(String(v||'').trim(), 10); return isFinite(n) ? n : 0; };
-  const trim = (v) => String(v||'').trim();
-
-  const payload = {
-    restaurant_id: state.rid || undefined,
-    title: trim(fd.get('title')),
-    original_price: toNum(fd.get('original_price')||fd.get('price_base')) || undefined,
-    price: toNum(fd.get('price')),
-    qty_total: toInt(fd.get('qty_total')||fd.get('quantity')),
-    category: trim(fd.get('category')) || 'other',
-    description: trim(fd.get('description')) || '',
-    image_url: trim(fd.get('image_url')) || undefined,
-  };
-  const ex = trim(fd.get('expires_at'));
-  if (ex) payload.expires_at = dtLocalToIso(ex) || ex;
-  const bb = trim(fd.get('best_before'));
-  if (bb) payload.best_before = dtLocalToIso(bb) || bb;
-
-  // quick validations
-  if (!payload.title) { showInlineError('#offerError','Укажите название'); return; }
-  if (!(payload.qty_total > 0)) { showInlineError('#offerError','Количество должно быть больше 0'); return; }
-  if (!(payload.price > 0)) { showInlineError('#offerError','Новая цена должна быть больше 0'); return; }
-  if (payload.original_price && payload.price >= payload.original_price) { showInlineError('#offerError','Новая цена должна быть меньше обычной'); return; }
-  if (!payload.expires_at) { showInlineError('#offerError','Укажите срок действия оффера'); return; }
-
-  const btn = form.querySelector('button[type="submit"]');
-  try {
-    if (btn) { btn.disabled = true; btn.textContent = 'Сохранение…'; }
-    await api('/api/v1/merchant/offers', { method: 'POST', body: JSON.stringify(payload) });
-    showToast('Оффер сохранён ✓');
-    try { form.reset(); } catch(_) {}
-    activateTab('offers');
-    await loadOffers();
-  } catch (e2) {
-    showInlineError('#offerError', e2?.message || 'Ошибка при сохранении');
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = 'Сохранить оффер'; }
-  }
-});
-const ok = gate(); if (!ok) activateTab('auth');
+      const ok = gate(); 
+    try { if (ok) { refreshDashboard(); } } catch(_) {}
+if (!ok) activateTab('auth');
     } catch(e){ console.error(e); const a = document.getElementById('auth'); if (a) { a.classList.add('active'); } }
   });
 })();
