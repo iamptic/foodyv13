@@ -101,78 +101,93 @@
         </div>
       </section>
 
-      <section class="pane" id="auth">
-        <div class="card card-glass">
-          <div class="card-title">Войдите или зарегистрируйтесь</div>
+     <section class="pane" id="create">
+  <div class="card">
+    <div class="card-title">Создать оффер</div>
+    <form id="offerForm" class="form grid two">
 
-          <div class="auth-switch">
-            <input type="radio" name="authmode" id="mode-login" checked>
-            <input type="radio" name="authmode" id="mode-register">
-            <div class="track"><span class="thumb"></span></div>
-            <div class="labels">
-              <label for="mode-login">Вход</label>
-              <label for="mode-register">Регистрация</label>
-            </div>
-          </div>
+      <!-- 1) Название -->
+      <label class="full">Название
+        <input name="title" placeholder="Напр., Набор суши «Закат»" required>
+      </label>
 
-          <div class="auth-forms">
-            <form id="loginForm" class="form">
-              <label>Телефон
-                <input name="login" id="loginPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+7 900 000 00 00" required>
-              </label>
-              <label>Пароль
-                <div class="pw-field">
-                  <input name="password" id="loginPassword" type="password" placeholder="••••••••" required>
-                  <button class="pw-toggle" id="toggleLoginPw" type="button" aria-label="Показать пароль" aria-pressed="false">👁</button>
-                </div>
-              </label>
-              <div id="loginError" class="form-error hidden"></div>
-              <button class="btn btn-primary" type="submit">Войти</button>
-            </form>
+      <!-- 2) Цена (старая / обычная) -->
+      <label>Старая цена (до скидки)
+        <input name="original_price" id="offerOldPrice" type="number" min="0" step="1" placeholder="Напр., 350" required>
+      </label>
 
-            <form id="registerForm" class="form grid two">
-              <label>Название ресторана
-                <input name="name" placeholder="Кафе Плюс" required>
-              </label>
-              <label>Телефон
-                <input name="login" id="registerPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+7 900 000 00 00" required>
-              </label>
-              <label class="full">Город
-                <div class="city-picker">
-                  <div id="cityOpen" class="city-display w-full">
-                    <span class="hint">Выберите город</span>
-                    <span class="value"></span>
-                    <span class="caret">▾</span>
-                  </div>
-                  <input type="hidden" name="city" id="cityValue">
-                </div>
-              </label>
-              <label class="full">Адрес (улица, дом)
-                <input name="address" placeholder="Напр., Невский проспект, 10">
-              </label>
-              <label>Время работы — с
-                <input name="work_from" type="time" placeholder="09:00">
-              </label>
-              <label>до
-                <input name="work_to" type="time" placeholder="22:00">
-              </label>
-              <div class="work-presets" data-for="register">
-                <span class="chip" data-from="10:00" data-to="22:00">10:00–22:00</span>
-                <span class="chip" data-from="09:00" data-to="21:00">09:00–21:00</span>
-                <span class="chip" data-from="00:00" data-to="23:59">24/7</span>
-              </div>
-              <label class="full">Пароль
-                <div class="pw-field">
-                  <input name="password" id="registerPassword" type="password" placeholder="мин. 6 символов" minlength="6" required>
-                  <button class="pw-toggle" id="toggleRegisterPw" type="button" aria-label="Показать пароль" aria-pressed="false">👁</button>
-                </div>
-              </label>
-              <div id="registerError" class="form-error hidden"></div>
-              <button class="btn btn-primary" type="submit">Зарегистрироваться</button>
-            </form>
-          </div>
+      <!-- 3) Скидка (чипсы) -->
+      <div class="full">
+        <div class="work-presets" id="discountPresets">
+          <span class="chip" data-discount="30">-30%</span>
+          <span class="chip" data-discount="40">-40%</span>
+          <span class="chip" data-discount="50">-50%</span>
+          <span class="chip" data-discount="60">-60%</span>
+          <span class="chip" data-discount="70">-70%</span>
+          <span class="chip" data-discount="80">-80%</span>
+          <span class="chip" data-discount="90">-90%</span>
         </div>
-      </section>
+      </div>
+
+      <!-- 4) Новая цена (после скидки) -->
+      <label>Новая цена
+        <input name="price" id="offerPrice" type="number" min="0" step="1" placeholder="например, 190" required>
+      </label>
+
+      <!-- 5) Остаток / Количество -->
+      <label>Остаток / Количество, шт
+        <input name="qty_total" type="number" min="1" step="1" value="1" required>
+      </label>
+
+      <!-- Срок годности продукта (контрольное поле) -->
+      <label class="full">Срок годности продукта
+        <input id="bestBefore" type="datetime-local" placeholder="до какого времени продукт ок">
+        <div class="muted small">Поле для контроля — в API не отправляется.</div>
+      </label>
+
+      <!-- Срок действия оффера -->
+      <label class="full">Срок действия оффера
+        <input name="expires_at" id="expires_at" placeholder="Сегодня 21:00" required>
+      </label>
+      <div class="full">
+        <div class="work-presets" id="expirePresets">
+          <span class="chip" data-action="close" id="expireToClose" style="display:none">К закрытию</span>
+        </div>
+      </div>
+
+      <!-- Категория -->
+      <label class="full">Категория
+        <select name="category">
+          <option value="ready_meal">Готовые блюда</option>
+          <option value="bakery">Выпечка</option>
+          <option value="sushi">Суши/роллы</option>
+          <option value="salad">Салаты</option>
+          <option value="dessert">Десерты</option>
+          <option value="other">Другое</option>
+        </select>
+      </label>
+
+      <!-- Фото (опционально) -->
+      <div class="field">
+        <label for="offerImage">Фото (опционально)</label>
+        <input type="file" id="offerImage" name="offerImage" accept="image/*">
+        <input type="hidden" id="offerImageUrl" name="image_url">
+        <p class="hint">Поддерживаются JPG/PNG/WebP до 5 МБ</p>
+      </div>
+
+      <!-- Краткое описание -->
+      <label class="full">
+        <textarea name="description" rows="3" placeholder="Кратко: состав, порции и т.п."></textarea>
+      </label>
+
+      <div class="full" style="display:flex;gap:8px;align-items:center;justify-content:flex-end;">
+        <div id="offerError" class="form-error hidden" style="margin-right:auto"></div>
+        <button class="btn btn-primary" type="submit">Сохранить оффер</button>
+      </div>
+    </form>
+  </div>
+</section>
+
 
       <section class="pane" id="offers">
         <div class="card">
