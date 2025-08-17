@@ -1,0 +1,23 @@
+
+/* Foody fix10 — expires presets + FilePond polish (2025-08-17) */
+
+/* Preset chips */
+.work-presets{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+.work-presets .chip{padding:8px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);cursor:pointer;user-select:none}
+.work-presets .chip.active{background:rgba(0,194,122,.20);border-color:rgba(0,194,122,.35)}
+
+/* FilePond look */
+.filepond--root{border-radius:14px;background:rgba(255,255,255,0.03);border:1px dashed rgba(255,255,255,0.18);transition:border-color .2s ease, background .2s ease, box-shadow .2s ease}
+.filepond--root:focus-within{border-color:rgba(0,194,122,.6);box-shadow:0 0 0 4px rgba(0,194,122,.15)}
+.filepond--panel-root{border-radius:14px}
+.filepond--drop-label{color:rgba(255,255,255,0.75);font-size:14px}
+.filepond--item-panel{background:rgba(255,255,255,0.06)}
+.filepond--credits{display:none !important}
+@media (prefers-color-scheme:light){
+  .filepond--root{background:rgba(0,0,0,0.02);border-color:rgba(0,0,0,0.12)}
+  .filepond--drop-label{color:rgba(0,0,0,0.65)}
+}
+
+/* Reuse existing hint line for photo status */
+.field .hint.ok{color:#00C27A;font-weight:600}
+.field .hint.err{color:#ff7b7b;font-weight:600}
