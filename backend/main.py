@@ -1,4 +1,3 @@
-
 import os
 from typing import Any, Dict, Optional, Set
 
@@ -97,6 +96,7 @@ async def _migrate():
         await conn.execute("""
         CREATE TABLE IF NOT EXISTS offers (
             id SERIAL PRIMARY KEY,
+            merchant_id INTEGER,               -- добавлено
             restaurant_id INTEGER,
             title TEXT NOT NULL,
             price_cents INTEGER NOT NULL DEFAULT 0,
@@ -110,12 +110,17 @@ async def _migrate():
             created_at TIMESTAMPTZ DEFAULT now()
         );
         """)
+
         # ensure columns exist and backfill
         cols = await conn.fetch("""
             SELECT column_name FROM information_schema.columns
             WHERE table_name='offers' AND table_schema=current_schema()
         """)
         colset: Set[str] = {r["column_name"] for r in cols}
+
+        if "merchant_id" not in colset:
+            await conn.execute("ALTER TABLE offers ADD COLUMN IF NOT EXISTS merchant_id INTEGER;")
+            colset.add("merchant_id")
 
         if "restaurant_id" not in colset:
             await conn.execute("ALTER TABLE offers ADD COLUMN IF NOT EXISTS restaurant_id INTEGER;")
@@ -124,13 +129,9 @@ async def _migrate():
         if "created_at" not in colset:
             await conn.execute("ALTER TABLE offers ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();")
 
-        # backfill possible legacy
-        if "merchant_id" in colset:
-            await conn.execute("UPDATE offers SET restaurant_id=merchant_id WHERE restaurant_id IS NULL;")
-        if "restaurant" in colset:
-            await conn.execute("UPDATE offers SET restaurant_id=restaurant WHERE restaurant_id IS NULL;")
-        if "rest_id" in colset:
-            await conn.execute("UPDATE offers SET restaurant_id=rest_id WHERE restaurant_id IS NULL;")
+        # backfill (на всякий случай для уже существующих строк)
+        await conn.execute("UPDATE offers SET restaurant_id = COALESCE(restaurant_id, merchant_id) WHERE restaurant_id IS NULL;")
+        await conn.execute("UPDATE offers SET merchant_id   = COALESCE(merchant_id, restaurant_id) WHERE merchant_id IS NULL;")
 
 def _hash_password(pw: str) -> str:
     salt = hashlib.sha256(RECOVERY_SECRET.encode()).hexdigest()[:16]
@@ -158,14 +159,12 @@ def _parse_time(val: Any) -> Optional[dtime]:
         s = val.strip()
         if not s:
             return None
-        # allow HH:MM or HH:MM:SS
         parts = s.split(":")
         try:
             h = int(parts[0])
             m = int(parts[1]) if len(parts) > 1 else 0
             s = int(parts[2]) if len(parts) > 2 else 0
             if h == 24 and m == 0 and s == 0:
-                # 24:00 невалидно для TIME — заменим на 23:59:59
                 return dtime(23, 59, 59)
             return dtime(h, m, s)
         except Exception:
@@ -202,7 +201,9 @@ class LoginRequest(BaseModel):
     login: str
     password: str
 
+# (оставил для совместимости, но расширил)
 class OfferCreate(BaseModel):
+    merchant_id: Optional[int] = None
     restaurant_id: int
     title: str
     price: float
@@ -336,7 +337,9 @@ async def list_offers(restaurant_id: int, request: Request):
             out.append(d)
         return out
 
+# повторное объявление оставлено для совместимости кода ниже
 class OfferCreate(BaseModel):
+    merchant_id: Optional[int] = None
     restaurant_id: int
     title: str
     price: float
@@ -352,32 +355,39 @@ class OfferCreate(BaseModel):
 async def create_offer(payload: OfferCreate, request: Request):
     api_key = _get_api_key(request)
     async with _pool.acquire() as conn:
-        await _require_auth(conn, payload.restaurant_id, api_key)
+        # авторизуем по merchant_id или restaurant_id
+        rid = int(payload.merchant_id or payload.restaurant_id)
+        await _require_auth(conn, rid, api_key)
 
         price_cents = int(round((payload.price or 0) * 100))
         original_cents = int(round((payload.original_price or 0) * 100)) if payload.original_price is not None else None
         qty_total = payload.qty_total or 1
         qty_left = payload.qty_left if payload.qty_left is not None else qty_total
 
-        expires = None
-        try:
-            if payload.expires_at.endswith("Z"):
-                expires = datetime.fromisoformat(payload.expires_at.replace("Z","+00:00"))
-            else:
-                expires = datetime.fromisoformat(payload.expires_at).replace(tzinfo=timezone.utc)
-        except Exception:
-            pass
+        expires = _parse_expires_at(payload.expires_at)
         if not expires:
             raise HTTPException(status_code=400, detail="invalid expires_at")
 
+        # пишем merchant_id И restaurant_id (оба = rid)
         row = await conn.fetchrow(
             """
-            INSERT INTO offers (restaurant_id, title, price_cents, original_price_cents, qty_total, qty_left,
-                                expires_at, image_url, category, description)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+            INSERT INTO offers (
+                merchant_id,
+                restaurant_id,
+                title,
+                price_cents,
+                original_price_cents,
+                qty_total,
+                qty_left,
+                expires_at,
+                image_url,
+                category,
+                description
+            )
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
             RETURNING id
             """,
-            payload.restaurant_id, payload.title, price_cents, original_cents, qty_total, qty_left,
+            rid, rid, payload.title, price_cents, original_cents, qty_total, qty_left,
             expires, payload.image_url, payload.category, payload.description
         )
         return {"id": row["id"]}
@@ -385,6 +395,7 @@ async def create_offer(payload: OfferCreate, request: Request):
 @app.get("/")
 async def root():
     return {"ok": True, "service": APP_NAME}
+
 @app.put("/api/v1/merchant/password")
 async def change_password(payload: dict = Body(...), request: Request = None):
     restaurant_id = int(payload.get("restaurant_id") or 0)
