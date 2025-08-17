@@ -606,8 +606,73 @@ async function refreshDashboard(){
   }
 }
 
+
+// --- Helpers for robust API POST (offers) ---
+function foodyBase() {
+  try {
+    return (window.__FOODY__ && window.__FOODY__.FOODY_API) || window.foodyApi || '';
+  } catch(_) { return ''; }
+}
+function joinApi(path) {
+  const base = foodyBase();
+  if (/^https?:\/\//i.test(path)) return path;
+  if (/^https?:\/\//i.test(base)) return base.replace(/\/+$/, '') + path;
+  return path; // fallback to relative
+}
+async function postOfferRobust(payload) {
+  const url = joinApi('/api/v1/merchant/offers');
+  // Try #1: use existing api() helper (it sets headers incl. X-Foody-Key)
+  try {
+    return await api('/api/v1/merchant/offers', { method: 'POST', body: JSON.stringify(payload) });
+  } catch (e1) {
+    if (!String(e1.message||'').includes('удалось связаться')) throw e1;
+    // Try #2: direct fetch with X-Foody-Key header (explicit CORS)
+    try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (state && state.key) headers['X-Foody-Key'] = state.key;
+      const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload), mode: 'cors' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const ct = res.headers.get('content-type') || '';
+      return ct.includes('application/json') ? res.json() : res.text();
+    } catch (e2) {
+      // Try #3: pass key via query param to bypass custom header CORS (backend may accept it)
+      try {
+        const tail = (state && state.key) ? (url + (url.includes('?')?'&':'?') + 'x_key=' + encodeURIComponent(state.key)) : url;
+        const res = await fetch(tail, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), mode: 'cors' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const ct = res.headers.get('content-type') || '';
+        return ct.includes('application/json') ? res.json() : res.text();
+      } catch (e3) {
+        throw e1; // bubble original CORS-like error for user-friendly message
+      }
+    }
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     try {
+
+// --- Dedup toasts for login/logout (avoid double "Вы вышли/вошли") ---
+try {
+  if (!window.__toastDedup && typeof window.showToast === 'function') {
+    const __origShowToast = window.showToast;
+    window.showToast = function(msg, ...rest) {
+      try {
+        if (msg && (String(msg).includes('Вы вышли') || String(msg).includes('Вы вошли'))) {
+          const now = Date.now();
+          if (window.__toastLast === msg && (now - (window.__toastLastTs || 0)) < 1000) {
+            return; // drop duplicate within 1s
+          }
+          window.__toastLast = msg;
+          window.__toastLastTs = now;
+        }
+      } catch(_) {}
+      return __origShowToast(msg, ...rest);
+    };
+    window.__toastDedup = true;
+  }
+} catch(_) {}
+
       attachPhoneMask($('#loginPhone'));
       attachPhoneMask($('#registerPhone'));
       attachPhoneMask($('#profilePhone'));
@@ -619,7 +684,56 @@ document.addEventListener('DOMContentLoaded', () => {
       CityPicker.setInitial('#profileCityOpen', '#profileCityValue');
       bindWorkPresets('.work-presets[data-for="register"]', 'input[name="work_from"]', 'input[name="work_to"]');
       bindWorkPresets('.work-presets[data-for="profile"]', '#profile_work_from', '#profile_work_to');
-      const ok = gate(); 
+      
+// --- Offer create submit (robust, CORS-safe) ---
+on('#offerForm','submit', async (e) => {
+  e.preventDefault();
+  const form = e.currentTarget;
+  const err = form.querySelector('#offerError');
+  if (err) { err.classList.add('hidden'); }
+  const fd = new FormData(form);
+  const toNum = (v) => { const n = parseFloat(String(v||'').replace(',', '.')); return isFinite(n) ? n : 0; };
+  const toInt = (v) => { const n = parseInt(String(v||'').trim(), 10); return isFinite(n) ? n : 0; };
+  const trim = (v) => String(v||'').trim();
+
+  const payload = {
+    restaurant_id: state && state.rid || undefined,
+    title: trim(fd.get('title')),
+    original_price: toNum(fd.get('original_price')||fd.get('price_base')) || undefined,
+    price: toNum(fd.get('price')),
+    qty_total: toInt(fd.get('qty_total')||fd.get('quantity')),
+    category: trim(fd.get('category')) || 'other',
+    description: trim(fd.get('description')) || '',
+    image_url: trim(fd.get('image_url')) || undefined,
+  };
+  const ex = trim(fd.get('expires_at'));
+  if (ex) payload.expires_at = dtLocalToIso(ex) || ex;
+  const bb = trim(fd.get('best_before'));
+  if (bb) payload.best_before = dtLocalToIso(bb) || bb;
+
+  // quick validations
+  if (!payload.title) { showInlineError('#offerError','Укажите название'); return; }
+  if (!(payload.qty_total > 0)) { showInlineError('#offerError','Количество должно быть больше 0'); return; }
+  if (!(payload.price > 0)) { showInlineError('#offerError','Новая цена должна быть больше 0'); return; }
+  if (payload.original_price && payload.price >= payload.original_price) { showInlineError('#offerError','Новая цена должна быть меньше обычной'); return; }
+  if (!payload.expires_at) { showInlineError('#offerError','Укажите срок действия оффера'); return; }
+
+  const btn = form.querySelector('button[type="submit"]');
+  try {
+    if (btn) { btn.disabled = true; btn.textContent = 'Сохранение…'; }
+    await postOfferRobust(payload);
+    showToast('Оффер сохранён ✓');
+    try { form.reset(); } catch(_) {}
+    activateTab('offers');
+    try { await loadOffers(); } catch(_) {}
+    try { refreshDashboard && refreshDashboard(); } catch(_) {}
+  } catch (e2) {
+    showInlineError('#offerError', e2?.message || 'Ошибка при сохранении');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Сохранить оффер'; }
+  }
+});
+const ok = gate(); 
     try { if (ok) { refreshDashboard(); } } catch(_) {}
 if (!ok) activateTab('auth');
     } catch(e){ console.error(e); const a = document.getElementById('auth'); if (a) { a.classList.add('active'); } }
