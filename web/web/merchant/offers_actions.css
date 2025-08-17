@@ -1,14 +1,21 @@
-
-/* Simple actions column + modal */
-#offerList .row { display:grid; grid-template-columns: 2fr 1fr 1fr 1fr 1.4fr 1fr; gap: 8px; align-items:center; }
-#offerList .row.head { font-weight:600; color:#444; }
-#offerList .row .actions { display:flex; gap:6px; justify-content:flex-end; }
-#offerList .btn-danger { background:#dc2626; color:#fff; border:0; }
-#offerList .btn-danger:hover { filter:brightness(0.95); }
-
-.modal { position:fixed; inset:0; z-index:50; }
-.modal[style*="display: none"] { display:none !important; }
-.modal .modal-dim { position:absolute; inset:0; background:rgba(0,0,0,.35); }
-.modal .modal-card { position:absolute; left:50%; top:10%; transform:translateX(-50%); width:min(720px, 92vw); background:#fff; border-radius:16px; box-shadow:0 10px 30px rgba(0,0,0,.2); padding:18px; }
-.modal .modal-title { font-size:18px; font-weight:600; margin-bottom:8px; }
-.modal .modal-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:6px; }
+/* Polished modal + actions (dark theme) */
+.modal{position:fixed;inset:0;z-index:50;}
+.modal[style*="display: none"]{display:none!important;}
+.modal .modal-dim{position:absolute;inset:0;background:rgba(0,0,0,.6);backdrop-filter:saturate(.9) blur(2px);}
+.modal .modal-card{position:absolute;left:50%;top:6%;transform:translateX(-50%);width:min(760px,92vw);background:#0b0f14;border:1px solid rgba(255,255,255,.08);border-radius:18px;box-shadow:0 20px 60px rgba(0,0,0,.5);padding:20px;}
+.modal .modal-title{font-size:20px;font-weight:700;color:#e2e8f0;margin-bottom:14px;}
+.modal .form{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.modal .form.two{grid-template-columns:1fr 1fr;}
+.modal .form .full{grid-column:1/-1;}
+.modal .form label{display:flex;flex-direction:column;gap:6px;color:#93a4b8;font-size:12px;}
+.modal .form input,.modal .form select,.modal .form textarea{background:#0f151c;color:#e5e7eb;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px 14px;font-size:14px;outline:none;}
+.modal .form input:focus,.modal .form select:focus,.modal .form textarea:focus{border-color:#10b981;box-shadow:0 0 0 3px rgba(16,185,129,.15);}
+.modal .form textarea{min-height:110px;resize:vertical;}
+.modal .modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:6px;}
+.btn{border-radius:12px;padding:10px 16px;border:1px solid transparent;cursor:pointer;font-weight:600;}
+.btn-ghost{background:transparent;border-color:rgba(255,255,255,.12);color:#e5e7eb;}
+.btn-ghost:hover{background:rgba(255,255,255,.06);}
+.btn-primary{background:#10b981;color:#062e25;border:0;}
+.btn-primary:hover{filter:brightness(.98);}
+.btn-danger{background:#dc2626;color:#fff;border:0;}
+.btn-danger:hover{filter:brightness(.95);}
