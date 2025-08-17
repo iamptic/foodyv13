@@ -733,6 +733,15 @@ on('#offerForm','submit', async (e) => {
     if (btn) { btn.disabled = false; btn.textContent = 'Сохранить оффер'; }
   }
 });
+
+// --- Dashboard actions: route buttons to tabs ---
+try {
+  on('#dashActions [data-tab]', 'click', (e) => {
+    e.preventDefault();
+    const t = e.currentTarget?.getAttribute('data-tab') || e.currentTarget?.dataset?.tab;
+    if (t) activateTab(t);
+  });
+} catch(_) {}
 const ok = gate(); 
     try { if (ok) { refreshDashboard(); } } catch(_) {}
 if (!ok) activateTab('auth');
