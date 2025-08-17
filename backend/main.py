@@ -1,5 +1,6 @@
 import os
 from typing import Any, Dict, Optional, Set
+from typing import Optional
 
 import asyncpg
 from fastapi import FastAPI, HTTPException, Body, Request
@@ -216,6 +217,20 @@ class OfferCreate(BaseModel):
     description: Optional[str] = None
 
 @app.on_event("startup")
+
+class OfferUpdate(BaseModel):
+    # optional fields for partial update
+    merchant_id: Optional[int] = None
+    restaurant_id: Optional[int] = None
+    title: Optional[str] = None
+    price: Optional[float] = None
+    original_price: Optional[float] = None
+    qty_total: Optional[int] = None
+    qty_left: Optional[int] = None
+    expires_at: Optional[str] = None  # ISO string (will be parsed)
+    image_url: Optional[str] = None
+    category: Optional[str] = None
+    description: Optional[str] = None
 async def startup_event():
     await _connect_pool()
     await _migrate()
@@ -353,6 +368,119 @@ class OfferCreate(BaseModel):
 
 @app.post("/api/v1/merchant/offers")
 async def create_offer(payload: OfferCreate, request: Request):
+
+@app.patch("/api/v1/merchant/offers/{offer_id}")
+async def update_offer(offer_id: int, payload: OfferUpdate, request: Request):
+    api_key = _get_api_key(request)
+    async with _pool.acquire() as conn:
+        # find offer's owner (rid) and check access
+        row = await conn.fetchrow("SELECT merchant_id, restaurant_id FROM offers WHERE id=$1", offer_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="offer not found")
+        rid_guess = row["merchant_id"] or row["restaurant_id"]
+        await _require_auth(conn, int(rid_guess), api_key)
+
+        # prepare updated fields
+        def _to_float(v):
+            try:
+                if v is None:
+                    return None
+                if isinstance(v, (int, float)):
+                    return float(v)
+                s = str(v).replace(',', '.').strip()
+                return float(s) if s else None
+            except Exception:
+                return None
+        price_f = _to_float(payload.price) if hasattr(payload, "price") else None
+        orig_f  = _to_float(payload.original_price) if hasattr(payload, "original_price") else None
+        price_cents = int(round(price_f * 100)) if price_f is not None else None
+        original_price_cents = int(round(orig_f * 100)) if orig_f is not None else None
+
+        qty_total = payload.qty_total if hasattr(payload, "qty_total") else None
+        qty_left  = payload.qty_left  if hasattr(payload, "qty_left")  else None
+        if qty_total is not None and qty_left is None:
+            qty_left = qty_total
+
+        expires = None
+        if hasattr(payload, "expires_at") and payload.expires_at is not None:
+            expires = _parse_expires_at(payload.expires_at)
+            if not expires:
+                raise HTTPException(status_code=400, detail="invalid expires_at")
+
+        img = (payload.image_url or "").strip() if hasattr(payload, "image_url") and payload.image_url is not None else None
+
+        # Build three attempts depending on schema
+        # 1) both float & cents columns
+        sets = []
+        vals = []
+        idx = 1
+        if payload.title is not None:
+            sets.append(f"title = ${idx}"); vals.append(payload.title); idx+=1
+        if price_f is not None:
+            sets.append(f"price = ${idx}"); vals.append(price_f); idx+=1
+        if price_cents is not None:
+            sets.append(f"price_cents = ${idx}"); vals.append(price_cents); idx+=1
+        if orig_f is not None:
+            sets.append(f"original_price = ${idx}"); vals.append(orig_f); idx+=1
+        if original_price_cents is not None:
+            sets.append(f"original_price_cents = ${idx}"); vals.append(original_price_cents); idx+=1
+        if qty_total is not None:
+            sets.append(f"qty_total = ${idx}"); vals.append(qty_total); idx+=1
+        if qty_left is not None:
+            sets.append(f"qty_left = ${idx}"); vals.append(qty_left); idx+=1
+        if expires is not None:
+            sets.append(f"expires_at = ${idx}"); vals.append(expires); idx+=1
+        if img is not None:
+            sets.append(f"image_url = ${idx}"); vals.append(img); idx+=1
+        if payload.category is not None:
+            sets.append(f"category = ${idx}"); vals.append(payload.category); idx+=1
+        if payload.description is not None:
+            sets.append(f"description = ${idx}"); vals.append(payload.description); idx+=1
+
+        if not sets:
+            return {"id": offer_id}  # nothing to update
+
+        # Attempt updates with decreasing set of column variants
+        sql1 = "UPDATE offers SET " + ", ".join(sets) + f" WHERE id = ${idx} RETURNING id"
+        vals1 = vals + [offer_id]
+        try:
+            row2 = await conn.fetchrow(sql1, *vals1)
+        except Exception:
+            # remove float columns
+            sets2, vals2 = [], []
+            for s,v in zip(sets, vals):
+                if " price " in f" {s} " or " original_price " in f" {s} ":
+                    continue
+                sets2.append(s); vals2.append(v)
+            sql2 = "UPDATE offers SET " + ", ".join(sets2) + f" WHERE id = ${len(vals2)+1} RETURNING id"
+            try:
+                row2 = await conn.fetchrow(sql2, *(vals2 + [offer_id]))
+            except Exception:
+                # remove cents columns, try float-only
+                sets3, vals3 = [], []
+                # rebuild keeping float versions only
+                idx=1
+                if payload.title is not None:
+                    sets3.append(f"title = ${idx}"); vals3.append(payload.title); idx+=1
+                if price_f is not None:
+                    sets3.append(f"price = ${idx}"); vals3.append(price_f); idx+=1
+                if orig_f is not None:
+                    sets3.append(f"original_price = ${idx}"); vals3.append(orig_f); idx+=1
+                if qty_total is not None:
+                    sets3.append(f"qty_total = ${idx}"); vals3.append(qty_total); idx+=1
+                if qty_left is not None:
+                    sets3.append(f"qty_left = ${idx}"); vals3.append(qty_left); idx+=1
+                if expires is not None:
+                    sets3.append(f"expires_at = ${idx}"); vals3.append(expires); idx+=1
+                if img is not None:
+                    sets3.append(f"image_url = ${idx}"); vals3.append(img); idx+=1
+                if payload.category is not None:
+                    sets3.append(f"category = ${idx}"); vals3.append(payload.category); idx+=1
+                if payload.description is not None:
+                    sets3.append(f"description = ${idx}"); vals3.append(payload.description); idx+=1
+                sql3 = "UPDATE offers SET " + ", ".join(sets3) + f" WHERE id = ${len(vals3)+1} RETURNING id"
+                row2 = await conn.fetchrow(sql3, *(vals3 + [offer_id]))
+        return {"id": row2["id"]}
     """
     Safe insert for offers: writes both merchant_id and restaurant_id,
     coalesces image_url to non-null string, supports price/price_cents schemas.
@@ -487,3 +615,25 @@ async def change_password(payload: dict = Body(...), request: Request = None):
             raise HTTPException(status_code=401, detail="invalid current password")
         await conn.execute("UPDATE merchants SET password_hash=$2 WHERE id=$1", restaurant_id, _hash_password(new_password))
         return {"ok": True}
+
+
+@app.delete("/api/v1/merchant/offers/{offer_id}")
+async def delete_offer(offer_id: int, request: Request):
+    api_key = _get_api_key(request)
+    async with _pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT merchant_id, restaurant_id FROM offers WHERE id=$1", offer_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="offer not found")
+        rid_guess = row["merchant_id"] or row["restaurant_id"]
+        await _require_auth(conn, int(rid_guess), api_key)
+
+        # soft delete via status if column exists; otherwise hard delete
+        try:
+            row2 = await conn.fetchrow("UPDATE offers SET status = 'deleted' WHERE id=$1 RETURNING id", offer_id)
+            if row2:
+                return {"id": row2["id"], "deleted": True, "mode": "soft"}
+        except Exception:
+            pass
+        # fallback hard delete
+        await conn.execute("DELETE FROM offers WHERE id=$1", offer_id)
+        return {"id": offer_id, "deleted": True, "mode": "hard"}
