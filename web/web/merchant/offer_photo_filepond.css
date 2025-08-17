@@ -1,4 +1,5 @@
-/* FilePond dark (create tab only) */
+
+/* FilePond dark for Create tab */
 .filepond--credits{display:none!important}
 .filepond--root{margin-top:8px;border-radius:14px;border:1px dashed rgba(255,255,255,.16);background:rgba(255,255,255,.04);transition:.2s;}
 .filepond--root:hover,.filepond--root:focus-within{border-color:rgba(255,255,255,.26);background:rgba(255,255,255,.05);box-shadow:0 10px 30px rgba(0,0,0,.25);}

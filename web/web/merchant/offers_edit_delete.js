@@ -1,4 +1,5 @@
-/*! Offers table rework: single mount, smooth, robust delete */
+
+/*! Foody — Offers table: single mount, smooth render, robust delete */
 (function(){
   const apiBase = () => (window.__FOODY__ && window.__FOODY__.FOODY_API) || window.FOODY_API || window.foodyApi || '';
   const rid     = () => { try { return localStorage.getItem('foody_restaurant_id') || ''; } catch(_) { return ''; } };
@@ -6,8 +7,7 @@
   const qs      = (s,r=document)=>r.querySelector(s);
   const qsa     = (s,r=document)=>Array.from(r.querySelectorAll(s));
 
-  let mounted = false;
-  let loading = false;
+  let mounted=false, loading=false;
 
   function ensureShell(){
     let host = qs('#offerList');
@@ -19,7 +19,7 @@
       host = div;
     }
     if (!qs('.foody-offers', host)){
-      const html = `
+      host.innerHTML = `
         <div class="foody-offers">
           <table>
             <thead>
@@ -35,7 +35,6 @@
             <tbody id="offers-tbody"><tr><td class="hint" colspan="6">Загрузка…</td></tr></tbody>
           </table>
         </div>`;
-      host.innerHTML = html;
     }
     return host;
   }
@@ -76,7 +75,6 @@
       return;
     }
     const html = items.map(row).join('');
-    // Replace in one shot to avoid flicker
     requestAnimationFrame(()=>{ tbody.innerHTML = html; });
   }
 
@@ -100,16 +98,12 @@
       const act = btn.getAttribute('data-action');
 
       if(act==='edit'){
-        // populate modal
-        const cells = [...tr.children];
         const m=qs('#offerEditModal'); if(!m) return;
-        const title = cells[0].textContent || '';
-        const price = parseFloat((cells[1].textContent||'0').replace(',', '.')) || 0;
-        qs('#editId').value = id;
-        qs('#editTitle').value = title;
-        qs('#editPrice').value = price;
-        // остальные поля будет подтягивать по API при сохранении (или можно расширить)
         m.style.display='block';
+        qs('#editId').value = id;
+        // Остальные поля подтянем по таблице — достаточно для старта
+        qs('#editTitle').value = tr.children[0].textContent.trim();
+        qs('#editPrice').value = parseFloat((tr.children[1].textContent||'0').replace(',', '.'))||0;
         return;
       }
 
@@ -117,7 +111,8 @@
         if(btn._busy) return;
         btn._busy = true;
         if(!confirm('Удалить оффер?')) { btn._busy=false; return; }
-        const prev = tr.style.opacity; tr.style.opacity = .5; tr.style.pointerEvents='none';
+        const prev = tr.style.opacity;
+        tr.style.opacity = .5; tr.style.pointerEvents='none';
         const ok = await tryDelete(id);
         if(ok){
           tr.remove();
@@ -127,7 +122,7 @@
           tr.style.pointerEvents='';
           alert('Не удалось удалить. Проверь backend: зарегистрированы ли DELETE/PATCH/POST /delete ручки?');
         }
-        btn._busy = false;
+        btn._busy=false;
       }
     });
   }
@@ -146,18 +141,13 @@
   function mountOnce(){
     if(mounted) return;
     mounted = true;
-    // первое получение как только контейнер попадает в viewport
     const el = ensureShell();
     const io = new IntersectionObserver((entries)=>{
-      if(entries.some(x=>x.isIntersecting)){
-        io.disconnect();
-        load();
-      }
+      if(entries.some(x=>x.isIntersecting)){ io.disconnect(); load(); }
     }, {root:null, threshold:.1});
     io.observe(el);
-    // и на переключение вкладки «Офферы»
     document.addEventListener('click', (e)=>{
-      if(e.target.closest('[data-tab="offers"]')) setTimeout(load,20);
+      if(e.target.closest('[data-tab="offers"]')) setTimeout(load, 30);
     }, true);
   }
 

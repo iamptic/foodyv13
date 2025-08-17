@@ -5,15 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Foody · ЛК ресторана</title>
   <link rel="stylesheet" href="./style.css?v=dark2" />
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" />
   <link href="./offer_photo_filepond.css" rel="stylesheet">
-<link href="./offers_table_fix.css" rel="stylesheet">
+  <link href="./offers_table_fix.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" />
+  <link href="./offers_table_fix.css" rel="stylesheet">
 
 <!-- FilePond CSS -->
 <link href="https://unpkg.com/filepond@4.30.7/dist/filepond.min.css" rel="stylesheet">
 <link href="https://unpkg.com/filepond-plugin-image-preview@4.6.12/dist/filepond-plugin-image-preview.min.css" rel="stylesheet">
-<link href="./offer_photo_filepond.css" rel="stylesheet">
-  <script defer src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ru.js"></script>
   <script>window.foodyApi = (window.__FOODY__ && window.__FOODY__.FOODY_API) || window.foodyApi || 'https://foodyback-production.up.railway.app';</script>
   <script defer src="/config.js"></script>
@@ -349,7 +349,10 @@
               </div>
             </label>
             <label>Повтор нового пароля
-              <input type="password" id="pwNew2" placeholder="повторите новый пароль" minlength="6" required>
+              <div class="pw-field">
+                <input type="password" id="pwNew2" placeholder="повторите новый пароль" minlength="6" required>
+                <button class="pw-toggle" id="pwNew2Toggle" type="button" aria-label="Показать пароль" aria-pressed="false">👁</button>
+              </div>
             </label>
             <div id="pwError" class="form-error hidden"></div>
             <div style="display:flex;gap:8px;align-items:center;justify-content:flex-end;">
@@ -408,9 +411,6 @@
 <script src="https://unpkg.com/filepond-plugin-image-preview@4.6.12/dist/filepond-plugin-image-preview.min.js" defer></script>
 <script src="https://unpkg.com/filepond-plugin-file-validate-type@1.2.8/dist/filepond-plugin-file-validate-type.min.js" defer></script>
 <script src="https://unpkg.com/filepond-plugin-file-validate-size@2.2.8/dist/filepond-plugin-file-validate-size.min.js" defer></script>
-
-
-<script defer src="./offer_photo_filepond.js"></script>
 <script defer src="./foody.pw.js"></script>
 <script defer src="./offers_edit_delete.js"></script>
 
@@ -458,5 +458,6 @@
 </div>
 <script defer src="./offer_photo_create_only.js"></script>
 
+  <script defer src="./pw_toggle_fix.js"></script>
 </body>
 </html>

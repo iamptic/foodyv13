@@ -1,4 +1,5 @@
-/* Offers table — consistent columns, no flicker */
+
+/* Foody — Offers table (stable columns, no flicker) */
 .foody-offers{margin-top:10px;border-radius:16px;background:#0b0f14;border:1px solid rgba(255,255,255,.06);box-shadow:0 24px 60px rgba(0,0,0,.35)}
 .foody-offers table{width:100%;border-collapse:separate;border-spacing:0}
 .foody-offers thead th{position:sticky;top:0;background:#0b0f14;color:#cbd5e1;font-weight:600;text-align:left;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.06)}
