@@ -14,7 +14,7 @@
   <script defer src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ru.js"></script>
   <script>window.foodyApi = (window.__FOODY__ && window.__FOODY__.FOODY_API) || window.foodyApi || 'https://foodyback-production.up.railway.app';</script>
   <script defer src="/config.js"></script>
-  <script defer src="./app.js?v=no247-2"></script>
+  <script defer src="./app.js?v=no247-3"></script>
   <style>
     #cityModal[aria-hidden="true"] { display: none; }
     #cityModal[aria-hidden="false"] { display: block; }
@@ -96,6 +96,80 @@
         <div class="card">
           <div class="card-title">Добро пожаловать</div>
           <p class="muted">Войдите или зарегистрируйтесь, чтобы создавать офферы и управлять профилем.</p>
+        </div>
+      </section>
+      
+      <!-- AUTH pane (re-added) -->
+      <section class="pane" id="auth">
+        <div class="card card-glass">
+          <div class="card-title">Войдите или зарегистрируйтесь</div>
+
+          <div class="auth-switch">
+            <input type="radio" name="authmode" id="mode-login" checked>
+            <input type="radio" name="authmode" id="mode-register">
+            <div class="track"><span class="thumb"></span></div>
+            <div class="labels">
+              <label for="mode-login">Вход</label>
+              <label for="mode-register">Регистрация</label>
+            </div>
+          </div>
+
+          <div class="auth-forms">
+            <form id="loginForm" class="form">
+              <label>Телефон
+                <input name="login" id="loginPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+7 900 000 00 00" required>
+              </label>
+              <label>Пароль
+                <div class="pw-field">
+                  <input name="password" id="loginPassword" type="password" placeholder="••••••••" required>
+                  <button class="pw-toggle" id="toggleLoginPw" type="button" aria-label="Показать пароль" aria-pressed="false">👁</button>
+                </div>
+              </label>
+              <div id="loginError" class="form-error hidden"></div>
+              <button class="btn btn-primary" type="submit">Войти</button>
+            </form>
+
+            <form id="registerForm" class="form grid two">
+              <label>Название ресторана
+                <input name="name" placeholder="Кафе Плюс" required>
+              </label>
+              <label>Телефон
+                <input name="login" id="registerPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+7 900 000 00 00" required>
+              </label>
+              <label class="full">Город
+                <div class="city-picker">
+                  <div id="cityOpen" class="city-display w-full">
+                    <span class="hint">Выберите город</span>
+                    <span class="value"></span>
+                    <span class="caret">▾</span>
+                  </div>
+                  <input type="hidden" name="city" id="cityValue">
+                </div>
+              </label>
+              <label class="full">Адрес (улица, дом)
+                <input name="address" placeholder="Напр., Невский проспект, 10">
+              </label>
+              <label>Время работы — с
+                <input name="work_from" type="time" placeholder="09:00">
+              </label>
+              <label>до
+                <input name="work_to" type="time" placeholder="22:00">
+              </label>
+              <div class="work-presets" data-for="register">
+                <span class="chip" data-from="10:00" data-to="22:00">10:00–22:00</span>
+                <span class="chip" data-from="09:00" data-to="21:00">09:00–21:00</span>
+                <span class="chip" data-from="00:00" data-to="23:59">24/7</span>
+              </div>
+              <label class="full">Пароль
+                <div class="pw-field">
+                  <input name="password" id="registerPassword" type="password" placeholder="мин. 6 символов" minlength="6" required>
+                  <button class="pw-toggle" id="toggleRegisterPw" type="button" aria-label="Показать пароль" aria-pressed="false">👁</button>
+                </div>
+              </label>
+              <div id="registerError" class="form-error hidden"></div>
+              <button class="btn btn-primary" type="submit">Зарегистрироваться</button>
+            </form>
+          </div>
         </div>
       </section>
 
